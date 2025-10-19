@@ -6,6 +6,7 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -16,5 +17,12 @@ public interface DocumentRepository extends CrudRepository<Document, Long> {
     
     @Query("SELECT * FROM document WHERE source_id = :sourceId AND external_id = :externalId")
     Optional<Document> findBySourceIdAndExternalId(@Param("sourceId") Long sourceId, @Param("externalId") String externalId);
+
+    @Query("""
+        SELECT * FROM document
+        ORDER BY created_at DESC
+        LIMIT :limit
+        """)
+    List<Document> findRecent(@Param("limit") int limit);
 }
 

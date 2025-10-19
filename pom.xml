@@ -26,7 +26,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         
         <spring-ai.version>1.0.0-M3</spring-ai.version>
-        <vaadin.version>24.5.4</vaadin.version>
         <testcontainers.version>1.20.4</testcontainers.version>
     </properties>
     
@@ -41,14 +40,7 @@
                 <scope>import</scope>
             </dependency>
             
-            <!-- Vaadin BOM -->
-            <dependency>
-                <groupId>com.vaadin</groupId>
-                <artifactId>vaadin-bom</artifactId>
-                <version>${vaadin.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
+            
             
             <!-- Testcontainers BOM -->
             <dependency>
@@ -88,11 +80,7 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         
-        <!-- Vaadin (servlet-based UI) -->
-        <dependency>
-            <groupId>com.vaadin</groupId>
-            <artifactId>vaadin-spring-boot-starter</artifactId>
-        </dependency>
+        
 
         <!-- Spring AI -->
         <dependency>

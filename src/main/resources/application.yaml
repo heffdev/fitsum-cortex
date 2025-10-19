@@ -29,13 +29,13 @@ spring:
         options:
           model: qwen/qwen3-4b-2507
           temperature: 0.1
-          timeout: 180s
-          max-retries: 2
+          timeout: 300s
+          max-retries: 3
       embedding:
         options:
           model: text-embedding-ada-002
-          timeout: 180s
-          max-retries: 2
+          timeout: 300s
+          max-retries: 3
 
     vectorstore:
       pgvector:

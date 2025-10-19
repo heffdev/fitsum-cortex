@@ -40,7 +40,7 @@ public class IngestionService {
     }
 
     @Transactional
-    public Long ingestLocalFile(byte[] rawBytes, String filename) throws Exception {
+    public IngestionResult ingestLocalFile(byte[] rawBytes, String filename) throws Exception {
         // Ensure a LOCAL_FILES source exists
         Long sourceId = ensureLocalFilesSource();
 
@@ -50,7 +50,14 @@ public class IngestionService {
         // Deduplicate by (source_id, content_hash)
         var existing = documentRepository.findBySourceIdAndContentHash(sourceId, normalized.contentHash());
         if (existing.isPresent()) {
-            return existing.get().id();
+            return new IngestionResult(
+                existing.get().id(),
+                normalized.title(),
+                filename,
+                rawBytes.length,
+                java.time.Instant.now(),
+                true
+            );
         }
 
         // Persist document row
@@ -86,7 +93,14 @@ public class IngestionService {
             chunkRepository.save(c);
         }
 
-        return document.id();
+        return new IngestionResult(
+            document.id(),
+            normalized.title(),
+            filename,
+            rawBytes.length,
+            java.time.Instant.now(),
+            false
+        );
     }
 
     private Long ensureLocalFilesSource() {
