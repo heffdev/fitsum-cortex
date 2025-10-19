@@ -1,6 +1,5 @@
 package ai.fitsum.cortex.api.domain;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
@@ -11,7 +10,7 @@ public record Source(
     @Id Long id,
     String name,
     SourceType sourceType,
-    JsonNode configJson,
+    String configJson,
     Boolean isEnabled,
     LocalDateTime lastSyncAt,
     LocalDateTime createdAt,
@@ -22,7 +21,7 @@ public record Source(
         GMAIL
     }
     
-    public static Source create(String name, SourceType sourceType, JsonNode configJson) {
+    public static Source create(String name, SourceType sourceType, String configJson) {
         return new Source(
             null,
             name,

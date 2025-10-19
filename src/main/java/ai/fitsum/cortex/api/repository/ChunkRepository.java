@@ -13,11 +13,18 @@ public interface ChunkRepository extends CrudRepository<Chunk, Long> {
     
     List<Chunk> findByDocumentId(Long documentId);
     
-    @Query("SELECT * FROM chunk WHERE id = ANY(:ids)")
+    @Query("""
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
+               c.token_count, c.heading, c.page_number, c.created_at
+        FROM chunk c
+        WHERE c.id = ANY(:ids)
+        """)
     List<Chunk> findByIdIn(@Param("ids") Long[] ids);
     
     @Query("""
-        SELECT c.*, ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', :query)) as rank
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
+               c.token_count, c.heading, c.page_number, c.created_at,
+               ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', :query)) as rank
         FROM chunk c
         WHERE to_tsvector('english', c.content) @@ plainto_tsquery('english', :query)
         ORDER BY rank DESC
@@ -26,7 +33,9 @@ public interface ChunkRepository extends CrudRepository<Chunk, Long> {
     List<Chunk> fullTextSearch(@Param("query") String query, @Param("limit") int limit);
     
     @Query("""
-        SELECT c.* FROM chunk c
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
+               c.token_count, c.heading, c.page_number, c.created_at
+        FROM chunk c
         ORDER BY c.embedding <=> CAST(:embedding AS vector)
         LIMIT :limit
         """)

@@ -1,6 +1,7 @@
 package ai.fitsum.cortex.ui.view;
 
 import ai.fitsum.cortex.ui.client.CortexApiClient;
+import ai.fitsum.cortex.ingest.service.IngestionService;
 import ai.fitsum.cortex.ui.dto.AskRequest;
 import ai.fitsum.cortex.ui.dto.AskResponse;
 import com.vaadin.flow.component.button.Button;
@@ -10,6 +11,9 @@ import com.vaadin.flow.component.html.*;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.component.upload.Upload;
+import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
+import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import org.slf4j.Logger;
@@ -35,9 +39,11 @@ public class MainView extends VerticalLayout {
     private final Div citationsContainer;
     private final Div metadataFooter;
     private final String sessionId;
+    private final IngestionService ingestionService;
     
-    public MainView(CortexApiClient apiClient) {
+    public MainView(CortexApiClient apiClient, IngestionService ingestionService) {
         this.apiClient = apiClient;
+        this.ingestionService = ingestionService;
         this.sessionId = UUID.randomUUID().toString();
         
         setSizeFull();
@@ -99,6 +105,23 @@ public class MainView extends VerticalLayout {
             .set("font-size", "0.85em")
             .set("color", "var(--lumo-secondary-text-color)");
         
+        // Drag & drop upload
+        MemoryBuffer buffer = new MemoryBuffer();
+        Upload upload = new Upload(buffer);
+        upload.setDropLabel(new Span("Drop files to ingest"));
+        upload.setMaxFiles(1);
+        upload.setAcceptedFileTypes(".pdf", ".txt", ".md", ".docx");
+        upload.addSucceededListener(e -> {
+            try {
+                byte[] bytes = buffer.getInputStream().readAllBytes();
+                Long docId = ingestionService.ingestLocalFile(bytes, e.getFileName());
+                Notification.show("Ingested: " + e.getFileName() + " (ID: " + docId + ")");
+            } catch (Exception ex) {
+                Notification.show("Upload failed: " + ex.getMessage());
+                log.error("Upload failed", ex);
+            }
+        });
+
         // Layout
         add(
             header,
@@ -108,7 +131,8 @@ public class MainView extends VerticalLayout {
             answerContainer,
             citationsHeader,
             citationsContainer,
-            metadataFooter
+            metadataFooter,
+            upload
         );
         
         // Initially hide citations and footer

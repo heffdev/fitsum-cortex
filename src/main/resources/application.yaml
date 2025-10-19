@@ -29,16 +29,20 @@ spring:
         options:
           model: qwen/qwen3-4b-2507
           temperature: 0.1
+          timeout: 180s
+          max-retries: 2
       embedding:
         options:
           model: text-embedding-ada-002
+          timeout: 180s
+          max-retries: 2
 
     vectorstore:
       pgvector:
         initialize-schema: false
         index-type: IVFFLAT
         distance-type: COSINE_DISTANCE
-        dimensions: 1536
+        dimensions: 384
 
 server:
   port: 8080

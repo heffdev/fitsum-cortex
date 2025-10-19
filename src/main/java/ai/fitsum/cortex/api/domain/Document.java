@@ -1,6 +1,5 @@
 package ai.fitsum.cortex.api.domain;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
@@ -15,7 +14,7 @@ public record Document(
     String contentHash,
     String contentType,
     String rawContent,
-    JsonNode metadataJson,
+    String metadataJson,
     LocalDateTime indexedAt,
     LocalDateTime updatedAt,
     LocalDateTime createdAt
@@ -27,7 +26,7 @@ public record Document(
         String contentHash,
         String contentType,
         String rawContent,
-        JsonNode metadata
+        String metadata
     ) {
         return new Document(
             null,
