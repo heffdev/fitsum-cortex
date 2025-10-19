@@ -6,16 +6,15 @@ This document summarizes what has been built and how to start using Fitsum Corte
 
 ## 📦 What Was Built
 
-### 1. Multi-Module Maven Project
+### 1. Single-Module Spring Boot Project
 
 ```
 fitsum-cortex/
-├── api/          ✅ RAG orchestration with Spring AI advisors
-├── ingest/       ✅ Document processing and embeddings pipeline
-├── ui/           ✅ Vaadin web interface with streaming
-├── infra/        ✅ Docker infrastructure setup
-├── docs/         ✅ Comprehensive documentation
-└── scripts/      ✅ Development and evaluation scripts
+├── src/main/java         # Vaadin UI + API + Ingestion + Retrieval
+├── src/main/resources    # application.yaml, Flyway migrations
+├── docs/                 # Architecture and build notes
+├── infra/                # Docker compose (optional)
+└── scripts/              # Dev helpers
 ```
 
 ### 2. Complete RAG System
@@ -47,12 +46,12 @@ fitsum-cortex/
 
 ### 3. Data Model
 
-#### PostgreSQL with pgvector
+#### PostgreSQL with pgvector (current)
 
 ```sql
 source       -- Knowledge source configurations
-document     -- Original documents with metadata
-chunk        -- Text chunks with 1536-dim embeddings
+document     -- Original documents with metadata_text (TEXT)
+chunk        -- Text chunks with 384‑dim embeddings (vector(384))
 qa_log       -- Complete Q&A audit trail
 eval_case    -- Golden test cases
 eval_run     -- Evaluation runs
@@ -82,7 +81,7 @@ eval_result  -- Individual eval results
 
 #### ✅ Features
 - Modern, responsive design
-- Real-time token streaming
+- Token streaming (enable askStream wiring next)
 - Citation cards with document references
 - Privacy indicators (🔒 for sensitive content)
 - Confidence levels (HIGH/MEDIUM/LOW)
@@ -91,26 +90,19 @@ eval_result  -- Individual eval results
 
 ### 6. Infrastructure
 
-#### ✅ Docker Compose Stack
-- **PostgreSQL 16** with pgvector extension
-- **Ollama** running qwen3:4b-instruct model
-- **Jaeger** for distributed tracing
+#### ✅ Local Stack
+- **PostgreSQL 17** with pgvector extension
 - **Prometheus** for metrics collection
 
 #### ✅ Observability
-- **Arconia OpenTelemetry Starter** auto-configures tracing
-- Full request/response spans
-- Token usage metrics
-- Latency histograms
-- Cost tracking
+- Spring Boot Actuator Prometheus scrape
+- Optional TelemetryAdvisor for spans/QA logs
 
 ### 7. Security
 
 #### ✅ Spring Security
-- HTTP Basic authentication (development)
-- In-memory user store
-- Protected `/v1/**` endpoints
-- Public health/metrics endpoints
+- Dev: `/v1/**` temporarily permitAll
+- Plan: restore auth and add dev profile that permitsAll
 
 #### Default Credentials
 - Username: `demo@fitsum.ai`
@@ -130,14 +122,8 @@ eval_result  -- Individual eval results
 4. Calculate aggregate metrics
 5. Store results for trending
 
-### 9. MCP Integration
-
-#### ✅ Tool Definitions
-- `search_knowledge` - Query knowledge base
-- `add_document` - Ingest documents
-- `list_sources` - List configured sources
-
-Schema defined in `api/src/main/resources/mcp.json`
+### 9. MCP Integration (later)
+Schema present under `src/main/resources/mcp.json` (not enabled yet)
 
 ### 10. Tests
 
@@ -167,23 +153,15 @@ cd fitsum-cortex
 mvn clean install
 ```
 
-### Step 3: Start API
+### Step 3: Start App
 
 ```bash
-cd api
 mvn spring-boot:run
 ```
 
-**API runs on:** http://localhost:8080
+App runs on: http://localhost:8080 (UI + API)
 
-### Step 4: Start UI (Optional)
-
-```bash
-cd ui
-mvn spring-boot:run
-```
-
-**UI runs on:** http://localhost:8082
+### Step 4: (UI is embedded, no separate start)
 
 ### Step 5: Test the System
 
@@ -210,16 +188,14 @@ curl -X POST http://localhost:8080/v1/ask \
 
 ## 🎯 Key Configuration
 
-### Ollama Model
+### Local LLM via LM Studio
 
-Based on your local LLM setup (from the image you provided):
-- **Model:** qwen3-4b-instruct-q1_k_m
-- **Base URL:** http://localhost:11234
-- **Already configured** in `application.yaml`
+Based on your local setup:
+- **Model:** qwen/qwen3-4b-2507 (LM Studio)
+- **Base URL:** http://10.5.0.2:1234
 
-### OpenAI
-
-Requires `OPENAI_API_KEY` environment variable (you mentioned it's already set on your Windows machine).
+### OpenAI (optional)
+If used, requires `OPENAI_API_KEY` environment variable.
 
 **Verify it's set:**
 ```powershell
@@ -228,7 +204,7 @@ $env:OPENAI_API_KEY
 
 ### Retrieval Tuning
 
-Edit `api/src/main/resources/application.yaml`:
+Edit `src/main/resources/application.yaml`:
 
 ```yaml
 cortex:
@@ -271,12 +247,8 @@ mvn verify
 
 ## 🔍 Monitoring
 
-### View Traces
-
-1. Open Jaeger: http://localhost:16686
-2. Select service: `fitsum-cortex-api`
-3. Find traces for operation: `cortex.ask`
-4. Inspect full advisor chain execution
+### Traces
+TelemetryAdvisor can emit spans when enabled (disabled by default)
 
 ### View Metrics
 
@@ -406,7 +378,7 @@ You now have a complete, production-ready RAG system with:
 
 ---
 
-**Built:** 2025-10-16  
+**Updated:** 2025-10-19  
 **Version:** 0.1.0-SNAPSHOT  
-**Framework:** Spring Boot 3.5.6 + Spring AI 1.0.3 + Vaadin 24.9.5
+**Framework:** Spring Boot 3.5.6 + Spring AI 1.0.0‑M3 + Vaadin 24.5.4
 

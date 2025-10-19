@@ -15,14 +15,9 @@ Fitsum Cortex is a privacy-first, citation-focused RAG (Retrieval-Augmented Gene
 ## System Architecture
 
 ```
-┌─────────────┐
-│  Vaadin UI  │  Port 8082
-│   Module    │  Token streaming, citations, privacy indicators
-└──────┬──────┘
-       │ HTTP/WebFlux
-       ▼
 ┌─────────────────────────────────────────────────────────┐
-│             API Module (Port 8080)                      │
+│         Single Spring Boot App (Port 8080)              │
+│  Vaadin UI + API + Ingestion + Retrieval                │
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │         Spring AI Advisor Chain                  │  │
@@ -30,16 +25,14 @@ Fitsum Cortex is a privacy-first, citation-focused RAG (Retrieval-Augmented Gene
 │  │  1. InputSanitizer                              │  │
 │  │  2. SensitivityGuard  ──► Classify PII/Conf    │  │
 │  │  3. RetrievalAdvisor  ──► Hybrid Retrieval     │  │
-│  │  4. ModelRouting      ──► Cloud vs Local       │  │
-│  │  5. TelemetryAdvisor  ──► Metrics & Logging    │  │
+│  │  4. ModelRouting (single provider: LM Studio)  │  │
+│  │  5. TelemetryAdvisor (optional)                │  │
 │  └──────────────────────────────────────────────────┘  │
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │         Hybrid Retrieval Engine                  │  │
 │  │                                                  │  │
-│  │  FTS (pg_trgm) ──┐                              │  │
-│  │                  ├──► Union ──► ReRank ──► Top K │  │
-│  │  ANN (pgvector) ─┘                              │  │
+│  │  FTS (pg_trgm) ∪ ANN (pgvector) → ReRank → TopK │  │
 │  └──────────────────────────────────────────────────┘  │
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐  │
@@ -61,28 +54,16 @@ Fitsum Cortex is a privacy-first, citation-focused RAG (Retrieval-Augmented Gene
          │  - eval_* (quality metrics)  │
          └──────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────┐
-│           Ingest Module (Port 8081)                     │
-│                                                         │
-│  Connectors:                                            │
-│  - LocalFilesConnector  ──► Scan directories           │
-│  - GmailConnector       ──► Incremental sync           │
-│                                                         │
-│  Pipeline:                                              │
-│  1. Normalize (Apache Tika)                            │
-│  2. Dedupe (SHA-256)                                   │
-│  3. Chunk (350-500 tokens, 15% overlap)                │
-│  4. Embed (OpenAI text-embedding-ada-002)              │
-│  5. Index (Postgres)                                   │
-└─────────────────────────────────────────────────────────┘
+Pipeline:
+1. Normalize (Apache Tika)
+2. Dedupe (SHA-256)
+3. Chunk (350–500 tokens, 15% overlap)
+4. Embed (local Transformers, 384‑dim)
+5. Index (Postgres + pgvector)
 
-┌─────────────────────────────────────────────────────────┐
-│           Observability Stack                           │
-│                                                         │
-│  Jaeger (localhost:16686)    ──► Distributed tracing   │
-│  Prometheus (localhost:9090) ──► Metrics collection    │
-│  Arconia OTel Starter        ──► Auto-instrumentation  │
-└─────────────────────────────────────────────────────────┘
+Observability:
+- Prometheus via Spring Boot Actuator
+- Optional tracing via TelemetryAdvisor (currently off)
 ```
 
 ## Data Flow
@@ -121,8 +102,8 @@ Fitsum Cortex is a privacy-first, citation-focused RAG (Retrieval-Augmented Gene
    - 15% overlap for context continuity
    - Preserves headings/sections
 5. **EmbeddingModel**: 
-   - Generates 1536-dim vectors
-   - Uses OpenAI text-embedding-ada-002
+   - Generates 384‑dim vectors (local Transformers)
+   - pgvector column: vector(384)
 6. **Write to database**:
    - `document` table
    - `chunk` table with embeddings
@@ -183,25 +164,11 @@ Every answer includes:
 "Revenue was $2.3M [Q4 Report, Financial Summary]"
 ```
 
-## Database Schema
+## Database Schema (current)
 
-### chunk Table
-
-```sql
-CREATE TABLE chunk (
-    id BIGSERIAL PRIMARY KEY,
-    document_id BIGINT NOT NULL,
-    content TEXT NOT NULL,
-    embedding vector(1536),  -- pgvector
-    ...
-);
-
-CREATE INDEX idx_chunk_embedding 
-  ON chunk USING ivfflat (embedding vector_cosine_ops);
-
-CREATE INDEX idx_chunk_content_trgm 
-  ON chunk USING gin (content gin_trgm_ops);
-```
+- `source` (config_json TEXT)
+- `document` (metadata_json TEXT)
+- `chunk` (embedding vector(384); ANN index IVFFlat; GIN `pg_trgm` on content)
 
 **Indexes:**
 - `ivfflat` for approximate nearest neighbor (ANN)
