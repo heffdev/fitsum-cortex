@@ -40,5 +40,8 @@ public interface ChunkRepository extends CrudRepository<Chunk, Long> {
         LIMIT :limit
         """)
     List<Chunk> vectorSearch(@Param("embedding") String embedding, @Param("limit") int limit);
+
+    @Query("SELECT COUNT(*) FROM chunk WHERE document_id = :documentId")
+    long countByDocumentId(@Param("documentId") Long documentId);
 }
 
