@@ -1,0 +1,7 @@
+/infra/**/data/**
+/**/target/**
+/**/build/**
+/**/.gradle/**
+/**/.idea/**
+/**/.vscode/**
+

@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: fitsum-cortex-api
+
+  main:
+    web-application-type: servlet
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cortex_dev
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  ai:
+    ollama:
+      enabled: false
+    openai:
+      base-url: http://10.5.0.2:1234
+      api-key: ${OPENAI_API_KEY:lm-studio}
+      chat:
+        options:
+          model: qwen/qwen3-4b-2507
+          temperature: 0.1
+      embedding:
+        options:
+          model: text-embedding-ada-002
+
+    vectorstore:
+      pgvector:
+        initialize-schema: false
+        index-type: IVFFLAT
+        distance-type: COSINE_DISTANCE
+        dimensions: 1536
+
+server:
+  port: 8080
+
+# Cortex-specific configuration
+cortex:
+  retrieval:
+    max-chunks: 12
+    fts-top-k: 25
+    ann-top-k: 25
+    rerank-top-k: 10
+    similarity-threshold: 0.7
+    allow-empty-context: true
+
+  sensitivity:
+    patterns:
+      pii:
+        - "\\b\\d{3}-\\d{2}-\\d{4}\\b"  # SSN
+        - "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"  # Email
+        - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"  # Phone
+      confidential:
+        - "\\bconfidential\\b"
+        - "\\binternal only\\b"
+        - "\\bdo not share\\b"
+
+  ingestion:
+    chunk-size-tokens: 400
+    chunk-overlap-percent: 15
+    batch-size: 50
+
+  security:
+    enabled: true
+    default-user: demo@fitsum.ai
+
+  observability:
+    enabled: false # Temporarily disabled
+    export-endpoint: http://localhost:4318
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: false # Temporarily disabled
+  tracing:
+    enabled: false # Temporarily disabled
+    sampling:
+      probability: 0.0 # Temporarily disabled
+
+logging:
+  level:
+    ai.fitsum.cortex: DEBUG
+    org.springframework.ai: INFO
+    org.flywaydb: INFO
+

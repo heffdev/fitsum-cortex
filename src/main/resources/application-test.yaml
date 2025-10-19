@@ -1,0 +1,30 @@
+spring:
+  main:
+    web-application-type: reactive
+  
+  # Disable observability for tests
+  sleuth:
+    enabled: false
+  
+  datasource:
+    url: jdbc:tc:postgresql:16:///cortex_test
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  
+  ai:
+    openai:
+      api-key: test-key
+
+cortex:
+  observability:
+    enabled: false
+  security:
+    enabled: false
+
+management:
+  tracing:
+    enabled: false
+  metrics:
+    export:
+      prometheus:
+        enabled: false
+

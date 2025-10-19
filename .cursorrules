@@ -1,0 +1,62 @@
+project:
+  name: Fitsum Cortex
+  principles:
+    - "Trust > novelty: strict citations; if context is missing, say so."
+    - "Privacy-first routing: classify locally; sensitive => local models only."
+    - "RAG strict by default; fallback to model knowledge only when explicitly enabled."
+    - "Tools are internet-facing APIs: require authN/Z + validation + telemetry."
+    - "Observability is non-optional (OpenTelemetry)."
+
+tech:
+  backend: "Spring Boot 3.5+, Spring AI 1.0.3 (stable), WebFlux, Postgres + pgvector"
+  frontend: "Vaadin 24.9.x, token streaming"
+  observability: "io.arconia:arconia-opentelemetry-spring-boot-starter:0.17.1"
+  optional_mcp: "If MCP bleeding-edge needed, use profile `mcpNext` with Spring AI 1.1.0-M3 in /api only."
+
+policies:
+  - "Never send potentially sensitive inputs to cloud models. Run SensitivityGuard locally first."
+  - "Default RetrievalAdvisor must BLOCK empty-context answers. UI provides explicit 'Allow fallback' toggle."
+  - "All mutation tools require @PreAuthorize and @Transactional, validate inputs, and log OTel spans."
+  - "All LLM structured outputs must pass JSON schema validation; one auto-repair allowed, else fail."
+  - "All answers include citations with titles and (heading/page)."
+  - "Unit tests required for new advisors, tools, retrievers, and connectors."
+
+directory_ownership:
+  "/api": ["backend"]
+  "/ingest": ["backend"]
+  "/ui": ["frontend"]
+  "/infra": ["devops"]
+  "/docs": ["pm","backend","frontend"]
+  "/scripts": ["devops"]
+
+banned_changes:
+  - "Removing or bypassing OpenTelemetry/Arconia wiring"
+  - "Bypassing SensitivityGuard"
+  - "Disabling schema validation for structured outputs"
+  - "Raising context above 12 chunks without justification and tests"
+
+code_style:
+  java: "Google Java Style; prefer records for DTOs; constructor injection; final where reasonable"
+  tests: "JUnit5; Testcontainers for Postgres; golden tests for retrieval and advisors; JSON-schema tests for structured outputs"
+
+task_templates:
+  - name: "Add connector"
+    description: "Implement new ingestion connector with dedupe, normalization, chunking, embeddings."
+    checklist:
+      - "Define SourceConfig and OAuth/creds if needed; store in source.config_json"
+      - "Implement incremental sync via updatedAt cursor"
+      - "Normalize -> dedupe by sha256 -> chunk (350–500 tokens; 15% overlap)"
+      - "Embed and index; write ingestion + retrieval tests with sample fixtures"
+      - "Expose source filter in /v1/ask and UI chips"
+  - name: "Add tool (MCP + Spring AI)"
+    checklist:
+      - "Define @Service interface; annotate with @AIFunction parameter hints"
+      - "Add @PreAuthorize; validate inputs; @Transactional for mutations"
+      - "Register with MCP; add unit/integration tests"
+      - "Emit OTel attributes (tool.name, user.id, latency_ms)"
+  - name: "Tune retrieval quality"
+    checklist:
+      - "Adjust FTS + ANN topK and thresholds; rerank strategy"
+      - "Run eval (P@5, MRR) and snapshot results to /docs/eval"
+      - "Keep context ≤ 12 chunks; prefer rerank gains over more context"
+

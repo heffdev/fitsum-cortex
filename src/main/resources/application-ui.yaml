@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: fitsum-cortex-ui
+
+server:
+  port: 8082
+
+vaadin:
+  launch-browser: false
+
+cortex:
+  api:
+    base-url: http://localhost:8080
+
+logging:
+  level:
+    ai.fitsum.cortex.ui: DEBUG
+
+

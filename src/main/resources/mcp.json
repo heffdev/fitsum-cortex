@@ -1,0 +1,79 @@
+{
+  "mcpServers": {
+    "cortex": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "target/fitsum-cortex-api-0.1.0-SNAPSHOT.jar",
+        "--mcp.enabled=true"
+      ],
+      "description": "Fitsum Cortex MCP server for knowledge retrieval and management",
+      "tools": [
+        {
+          "name": "search_knowledge",
+          "description": "Search the personal knowledge base and return relevant information with citations",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "The search query or question"
+              },
+              "max_results": {
+                "type": "integer",
+                "description": "Maximum number of results to return",
+                "default": 5
+              },
+              "source_filter": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by specific sources (e.g., 'gmail', 'local-files')"
+              }
+            },
+            "required": ["query"]
+          }
+        },
+        {
+          "name": "add_document",
+          "description": "Add a new document to the knowledge base",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Document title"
+              },
+              "content": {
+                "type": "string",
+                "description": "Document content"
+              },
+              "source": {
+                "type": "string",
+                "description": "Source identifier",
+                "default": "manual"
+              }
+            },
+            "required": ["title", "content"]
+          }
+        },
+        {
+          "name": "list_sources": {
+          "description": "List all configured knowledge sources",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "enabled_only": {
+                "type": "boolean",
+                "description": "Return only enabled sources",
+                "default": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
