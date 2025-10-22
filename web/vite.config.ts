@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: '../src/main/resources/static',   // serve from Tomcat
+    emptyOutDir: true
+  }
 })
-
-

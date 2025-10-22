@@ -7,6 +7,13 @@ spring:
   autoconfigure:
     exclude:
       - org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
+      - com.vaadin.flow.spring.VaadinAutoConfiguration
+      - com.vaadin.flow.spring.VaadinServletConfiguration
+      - com.vaadin.flow.spring.VaadinObservabilityAutoConfiguration
+      - dev.hilla.boot.HillaAutoConfiguration
+
+vaadin:
+  enabled: false
 
   datasource:
     url: jdbc:postgresql://localhost:5432/cortex_dev
