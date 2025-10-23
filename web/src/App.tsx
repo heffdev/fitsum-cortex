@@ -44,6 +44,40 @@ type DocumentWithChunks = {
   chunks: Chunk[]
 }
 
+function GlobalDropOverlay({ onFiles }: { onFiles: (files: File[]) => void }) {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    noClick: true, noKeyboard: true,
+    onDrop: accepted => accepted?.length && onFiles(accepted),
+  });
+  return (
+    <div
+      {...getRootProps()}
+      className={`fixed inset-0 z-40 transition-all ${
+        isDragActive ? 'pointer-events-auto bg-blue-500/10 border-2 border-dashed border-blue-400' : 'pointer-events-none'
+      }`}
+      aria-hidden={!isDragActive}
+    >
+      <input {...getInputProps()} />
+    </div>
+  );
+}
+
+function FloatingUploadTarget({ onFiles }: { onFiles: (files: File[]) => void }) {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: accepted => accepted?.length && onFiles(accepted),
+  });
+  return (
+    <div
+      {...getRootProps()}
+      className={`fixed left-4 bottom-4 z-30 card cursor-pointer ${isDragActive ? 'ring-2 ring-blue-400' : ''}`}
+      title="Click or drop a file to ingest"
+    >
+      <input {...getInputProps()} />
+      <div className="text-sm text-gray-700">Click or drop to ingest</div>
+    </div>
+  );
+}
+
 function UploadCard({ onUploaded }: { onUploaded: () => void }) {
   const [uploading, setUploading] = useState(false)
   const onDrop = (acceptedFiles: File[]) => {
@@ -215,8 +249,16 @@ function RecentUploads({ onAskAbout }: { onAskAbout: (title: string) => void }) 
             <tbody>
               {Array.isArray(data) && data.length > 0 ? data.map((d: any) => (
                 <tr key={d.id} className="border-t">
-                  <td className="py-2">{d.title}</td>
-                  <td className="py-2">{d.contentType}</td>
+                  <td className="py-2">
+                    <span title={d.title} className="inline-block max-w-[320px] truncate align-bottom">
+                      {d.title}
+                    </span>
+                  </td>
+                  <td className="py-2">
+                    <span title={d.contentType} className="inline-block max-w-[200px] truncate align-bottom">
+                      {(d.contentType || '').split('/')[1] || d.contentType || 'unknown'}
+                    </span>
+                  </td>
                   <td className="py-2">{d.indexedAt?.replace('T',' ').substring(0,19)}</td>
                   <td className="py-2">
                     <div className="flex justify-end gap-2">
@@ -316,6 +358,24 @@ Details: ${msg}`)
     ask.mutate()
   }
 
+  // Shared uploader used by global drop overlay and floating target.
+  const handleFiles = async (files: File[]) => {
+    if (!files?.length) return;
+    const file = files[0];
+    const form = new FormData();
+    form.append('file', file);
+    setToast('Uploading…');
+    try {
+      const res = await fetch(`${API_BASE}/v1/ingest/upload`, { method: 'POST', body: form });
+      const t = await res.text();
+      if (!res.ok) throw new Error(t);
+      setToast('File ingested successfully');
+      await qc.invalidateQueries({ queryKey: ['recent'] });
+    } catch (e: any) {
+      setToast(`Upload failed: ${e?.message ?? e}`);
+    }
+  };
+
   return (
     <div>
       <header className="border-b bg-white">
@@ -323,32 +383,44 @@ Details: ${msg}`)
           <div className="font-semibold">🧠 Fitsum Cortex</div>
         </div>
       </header>
-      <main className="container grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        <section className="lg:col-span-2 space-y-3">
-          <div className="card">
-            <textarea className="input min-h-[80px]" placeholder="Ask a question about your knowledge base..."
-              value={question} onChange={e => setQuestion(e.target.value)} />
-            <div className="mt-2 flex items-center gap-3">
-              <button className="btn" onClick={() => ask.mutate()} disabled={loading || !question.trim()}>Ask</button>
-              <label className="flex items-center gap-2 text-sm text-gray-600">
-                <input type="checkbox" checked={allowFallback} onChange={e => setAllowFallback(e.target.checked)} />
-                Allow general knowledge fallback
-              </label>
-            </div>
-          </div>
-          <div className="card min-h-[220px] space-y-2">
-            <div className="prose max-w-none whitespace-pre-wrap">{answer}</div>
-            {confidence != null && confidenceLabel && (
-              <div className="text-sm text-gray-600">
-                Confidence: <span className="font-medium">{confidenceLabel}</span> ({confidence.toFixed(2)})
+      {/* Full-width container with small gutters that adapts to screen size */}
+      <main className="container mt-6">
+        <div className="mx-auto w-full">
+          {/* Global drop overlay (drop anywhere) and floating bottom-left target */}
+          <GlobalDropOverlay onFiles={handleFiles} />
+          <FloatingUploadTarget onFiles={handleFiles} />
+          <div className="grid grid-cols-1 gap-6">
+            <section className="space-y-3">
+              <div className="card">
+                <textarea className="input min-h-[100px]" placeholder="Ask a question about your knowledge base..."
+                  value={question} onChange={e => setQuestion(e.target.value)} />
+                <div className="mt-2 flex items-center gap-3">
+                  <button className="btn" onClick={() => ask.mutate()} disabled={loading || !question.trim()}>Ask</button>
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" checked={allowFallback} onChange={e => setAllowFallback(e.target.checked)} />
+                    Allow general knowledge fallback
+                  </label>
+                </div>
               </div>
-            )}
+              <div className="card space-y-2">
+                <div className="prose max-w-none whitespace-pre-wrap">{answer}</div>
+                {confidence != null && confidenceLabel && (
+                  <div className="text-sm text-gray-600">
+                    Confidence: <span className="font-medium">{confidenceLabel}</span> ({confidence.toFixed(2)})
+                  </div>
+                )}
+              </div>
+
+              {/* Recent uploads as collapsible below answer */}
+              <details className="card" open>
+                <summary className="cursor-pointer select-none text-sm text-gray-700">Recent uploads</summary>
+                <div className="mt-3">
+                  <RecentUploads onAskAbout={onAskAbout} />
+                </div>
+              </details>
+            </section>
           </div>
-        </section>
-        <aside className="space-y-3">
-          <UploadCard onUploaded={onUploaded} />
-          <RecentUploads onAskAbout={onAskAbout} />
-        </aside>
+        </div>
       </main>
       {toast && (
         <div className="fixed right-4 bottom-4 card shadow-lg">{toast}</div>
