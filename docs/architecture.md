@@ -103,7 +103,7 @@ Observability:
    - Preserves headings/sections
 5. **EmbeddingModel**: 
    - Generates 384‑dim vectors (local Transformers)
-   - pgvector column: vector(384)
+   - pgvector column: vector(1024)
 6. **Write to database**:
    - `document` table
    - `chunk` table with embeddings
@@ -168,7 +168,7 @@ Every answer includes:
 
 - `source` (config_json TEXT)
 - `document` (metadata_json TEXT)
-- `chunk` (embedding vector(384); ANN index IVFFlat; GIN `pg_trgm` on content)
+- `chunk` (embedding vector(1024); ANN index IVFFlat; GIN `pg_trgm` on content)
 
 **Indexes:**
 - `ivfflat` for approximate nearest neighbor (ANN)

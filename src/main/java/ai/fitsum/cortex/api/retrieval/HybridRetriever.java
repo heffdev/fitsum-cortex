@@ -6,6 +6,7 @@ import ai.fitsum.cortex.api.repository.ChunkRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -29,7 +30,7 @@ public class HybridRetriever {
     
     public HybridRetriever(
         ChunkRepository chunkRepository,
-        EmbeddingModel embeddingModel,
+        @Qualifier("cortexEmbeddingModel") EmbeddingModel embeddingModel,
         ReRanker reRanker,
         CortexProperties properties
     ) {

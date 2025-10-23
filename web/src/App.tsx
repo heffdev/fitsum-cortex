@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Brain } from 'lucide-react'
+import { Brain, Eye, X } from 'lucide-react'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080'
 
@@ -9,10 +9,39 @@ type AskResponse = {
   answer: string
   citations?: { documentTitle: string; location: string; snippet: string }[]
   confidence: number
+  confidenceLabel: string
   provider: string
   traceId: string
   latencyMs: number
   sensitivity: string
+}
+
+type Document = {
+  id: number
+  title: string
+  contentType: string
+  contentHash: string
+  rawContent: string
+  metadataJson: string
+  indexedAt: string
+  createdAt: string
+}
+
+type Chunk = {
+  id: number
+  documentId: number
+  chunkIndex: number
+  content: string
+  contentHash: string
+  tokenCount: number
+  heading: string
+  pageNumber: number
+  createdAt: string
+}
+
+type DocumentWithChunks = {
+  document: Document
+  chunks: Chunk[]
 }
 
 function UploadCard({ onUploaded }: { onUploaded: () => void }) {
@@ -42,7 +71,120 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
   )
 }
 
+function DocumentDetailModal({ documentId, onClose }: { documentId: number | null, onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['document', documentId],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/ingest/document/${documentId}`)
+      if (!res.ok) throw new Error('Document not found')
+      return res.json() as Promise<DocumentWithChunks>
+    },
+    enabled: !!documentId
+  })
+
+  const [activeTab, setActiveTab] = useState<'content' | 'chunks' | 'metadata'>('content')
+
+  if (!documentId) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-lg font-semibold">
+            {isLoading ? 'Loading...' : data?.document.title}
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={20} />
+          </button>
+        </div>
+        
+        {data && (
+          <div className="flex-1 overflow-hidden">
+            <div className="flex border-b">
+              <button
+                className={`px-4 py-2 text-sm ${activeTab === 'content' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600'}`}
+                onClick={() => setActiveTab('content')}
+              >
+                Content
+              </button>
+              <button
+                className={`px-4 py-2 text-sm ${activeTab === 'chunks' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600'}`}
+                onClick={() => setActiveTab('chunks')}
+              >
+                Chunks ({data.chunks.length})
+              </button>
+              <button
+                className={`px-4 py-2 text-sm ${activeTab === 'metadata' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600'}`}
+                onClick={() => setActiveTab('metadata')}
+              >
+                Metadata
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-auto max-h-[60vh]">
+              {activeTab === 'content' && (
+                <div className="space-y-4">
+                  <div className="text-sm text-gray-600">
+                    <p><strong>Type:</strong> {data.document.contentType}</p>
+                    <p><strong>Indexed:</strong> {new Date(data.document.indexedAt).toLocaleString()}</p>
+                    <p><strong>Content Hash:</strong> {data.document.contentHash}</p>
+                  </div>
+                  <div className="prose max-w-none">
+                    <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-3 rounded border">
+                      {data.document.rawContent || 'No content available'}
+                    </pre>
+                  </div>
+                </div>
+              )}
+              
+              {activeTab === 'chunks' && (
+                <div className="space-y-3">
+                  {data.chunks.map((chunk, index) => (
+                    <div key={chunk.id} className="border rounded p-3">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Chunk {chunk.chunkIndex}</span>
+                          {chunk.heading && <span> • {chunk.heading}</span>}
+                          {chunk.pageNumber && <span> • Page {chunk.pageNumber}</span>}
+                          <span> • {chunk.tokenCount} tokens</span>
+                        </div>
+                      </div>
+                      <div className="text-sm bg-gray-50 p-2 rounded">
+                        {chunk.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {activeTab === 'metadata' && (
+                <div className="space-y-4">
+                  <div className="text-sm text-gray-600">
+                    <p><strong>Document ID:</strong> {data.document.id}</p>
+                    <p><strong>Created:</strong> {new Date(data.document.createdAt).toLocaleString()}</p>
+                    <p><strong>Content Type:</strong> {data.document.contentType}</p>
+                    <p><strong>Content Hash:</strong> {data.document.contentHash}</p>
+                  </div>
+                  {data.document.metadataJson && (
+                    <div>
+                      <h4 className="font-medium mb-2">Raw Metadata:</h4>
+                      <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto">
+                        {JSON.stringify(JSON.parse(data.document.metadataJson), null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function RecentUploads({ onAskAbout }: { onAskAbout: (title: string) => void }) {
+  const [viewingDocument, setViewingDocument] = useState<number | null>(null)
   const { data, refetch, isLoading } = useQuery({
     queryKey: ['recent'],
     queryFn: async () => (await fetch(`${API_BASE}/v1/ingest/recent?limit=10`)).json()
@@ -54,47 +196,58 @@ function RecentUploads({ onAskAbout }: { onAskAbout: (title: string) => void }) 
     else refetch()
   }
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold">Recent uploads</h3>
-        <button className="text-sm text-blue-600" onClick={() => refetch()} disabled={isLoading}>Refresh</button>
-      </div>
-      <div className="overflow-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-500">
-              <th className="py-1">Title</th>
-              <th className="py-1">Type</th>
-              <th className="py-1">Indexed</th>
-              <th className="py-1 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.isArray(data) && data.length > 0 ? data.map((d: any) => (
-              <tr key={d.id} className="border-t">
-                <td className="py-2">{d.title}</td>
-                <td className="py-2">{d.contentType}</td>
-                <td className="py-2">{d.indexedAt?.replace('T',' ').substring(0,19)}</td>
-                <td className="py-2">
-                  <div className="flex justify-end">
-                    <button className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
-                      title="Ask about this file"
-                      onClick={() => onAskAbout(d.title)}>
-                      <Brain size={16} /> Ask
-                    </button>
-                    <button className="ml-3 text-red-600 hover:text-red-700"
-                      title="Delete"
-                      onClick={() => del(d.id)}>Delete</button>
-                  </div>
-                </td>
+    <>
+      <div className="card">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold">Recent uploads</h3>
+          <button className="text-sm text-blue-600" onClick={() => refetch()} disabled={isLoading}>Refresh</button>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="py-1">Title</th>
+                <th className="py-1">Type</th>
+                <th className="py-1">Indexed</th>
+                <th className="py-1 text-right">Actions</th>
               </tr>
-            )) : (
-              <tr><td className="py-2 text-gray-500" colSpan={4}>No documents yet.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {Array.isArray(data) && data.length > 0 ? data.map((d: any) => (
+                <tr key={d.id} className="border-t">
+                  <td className="py-2">{d.title}</td>
+                  <td className="py-2">{d.contentType}</td>
+                  <td className="py-2">{d.indexedAt?.replace('T',' ').substring(0,19)}</td>
+                  <td className="py-2">
+                    <div className="flex justify-end gap-2">
+                      <button className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                        title="View document details"
+                        onClick={() => setViewingDocument(d.id)}>
+                        <Eye size={16} /> View
+                      </button>
+                      <button className="inline-flex items-center gap-1 text-green-600 hover:text-green-700"
+                        title="Ask about this file"
+                        onClick={() => onAskAbout(d.title)}>
+                        <Brain size={16} /> Ask
+                      </button>
+                      <button className="text-red-600 hover:text-red-700"
+                        title="Delete"
+                        onClick={() => del(d.id)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr><td className="py-2 text-gray-500" colSpan={4}>No documents yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+      <DocumentDetailModal 
+        documentId={viewingDocument} 
+        onClose={() => setViewingDocument(null)} 
+      />
+    </>
   )
 }
 
@@ -102,6 +255,8 @@ export default function App() {
   const [question, setQuestion] = useState('')
   const [allowFallback, setAllowFallback] = useState(false)
   const [answer, setAnswer] = useState('Waiting for input...')
+  const [confidence, setConfidence] = useState<number | null>(null)
+  const [confidenceLabel, setConfidenceLabel] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const sessionRef = useRef<string>(() => crypto.randomUUID() as any as string)
@@ -145,6 +300,8 @@ Details: ${msg}`)
     onSuccess: (r) => {
       setLoading(false)
       setAnswer(r.answer)
+      setConfidence(r.confidence)
+      setConfidenceLabel(r.confidenceLabel)
     }
   })
 
@@ -179,8 +336,13 @@ Details: ${msg}`)
               </label>
             </div>
           </div>
-          <div className="card min-h-[220px]">
+          <div className="card min-h-[220px] space-y-2">
             <div className="prose max-w-none whitespace-pre-wrap">{answer}</div>
+            {confidence != null && confidenceLabel && (
+              <div className="text-sm text-gray-600">
+                Confidence: <span className="font-medium">{confidenceLabel}</span> ({confidence.toFixed(2)})
+              </div>
+            )}
           </div>
         </section>
         <aside className="space-y-3">

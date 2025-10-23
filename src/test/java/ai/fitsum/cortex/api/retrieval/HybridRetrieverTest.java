@@ -53,7 +53,7 @@ class HybridRetrieverTest {
             .thenReturn(List.of(chunk2));
         
         when(embeddingModel.embed(query))
-            .thenReturn(new float[1536]);
+            .thenReturn(new float[1024]);
         
         when(reRanker.rerank(eq(query), anyList()))
             .thenReturn(List.of(
@@ -90,7 +90,7 @@ class HybridRetrieverTest {
             .thenReturn(manyChunks.subList(2, 4));
         
         when(embeddingModel.embed(query))
-            .thenReturn(new float[1536]);
+            .thenReturn(new float[1024]);
         
         when(reRanker.rerank(eq(query), anyList()))
             .thenReturn(manyChunks.stream()
@@ -114,7 +114,7 @@ class HybridRetrieverTest {
             100,
             null,
             null,
-            new float[1536],
+            new float[1024],
             LocalDateTime.now()
         );
     }

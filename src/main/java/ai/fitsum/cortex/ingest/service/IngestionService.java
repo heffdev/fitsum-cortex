@@ -7,6 +7,9 @@ import ai.fitsum.cortex.api.repository.ChunkRepository;
 import ai.fitsum.cortex.api.repository.DocumentRepository;
 import ai.fitsum.cortex.api.repository.SourceRepository;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import ai.fitsum.cortex.api.config.CortexProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,14 +25,18 @@ public class IngestionService {
     private final DocumentRepository documentRepository;
     private final ChunkRepository chunkRepository;
     private final SourceRepository sourceRepository;
+    private final CortexProperties properties;
+    @Value("${spring.ai.vectorstore.pgvector.dimensions}")
+    private int embeddingDimensions;
 
     public IngestionService(
         DocumentNormalizer documentNormalizer,
         ChunkingService chunkingService,
-        EmbeddingModel embeddingModel,
+        @Qualifier("cortexEmbeddingModel") EmbeddingModel embeddingModel,
         DocumentRepository documentRepository,
         ChunkRepository chunkRepository,
-        SourceRepository sourceRepository
+        SourceRepository sourceRepository,
+        CortexProperties properties
     ) {
         this.documentNormalizer = documentNormalizer;
         this.chunkingService = chunkingService;
@@ -37,6 +44,7 @@ public class IngestionService {
         this.documentRepository = documentRepository;
         this.chunkRepository = chunkRepository;
         this.sourceRepository = sourceRepository;
+        this.properties = properties;
     }
 
     @Transactional
@@ -67,7 +75,7 @@ public class IngestionService {
             normalized.title(),
             normalized.contentHash(),
             normalized.contentType(),
-            null,
+            normalized.text(), // Store raw content
             null
         );
         document = documentRepository.save(document);
@@ -79,11 +87,25 @@ public class IngestionService {
 
         // Embed and persist chunks
         for (ChunkingService.TextChunk tc : textChunks) {
-            float[] emb = embeddingModel.embed(tc.content());
+            // Enforce max chars per chunk prior to embedding
+            int targetTokens = properties.getIngestion().getChunkSizeTokens();
+            int maxChars = (int) Math.round(targetTokens * 3.2);
+            String content = tc.content();
+            if (content.length() > maxChars) {
+                content = content.substring(0, maxChars);
+            }
+            float[] emb = embeddingModel.embed(content);
+            if (emb == null || emb.length != embeddingDimensions) {
+                throw new IllegalStateException(
+                    "Embedding dimension mismatch: expected " + embeddingDimensions +
+                    ", got " + (emb == null ? 0 : emb.length) +
+                    ". Verify LM Studio is serving 'text-embedding-bge-large-en-v1.5' and OPENAI_BASE_URL points to it."
+                );
+            }
             Chunk c = Chunk.create(
                 document.id(),
                 tc.index(),
-                tc.content(),
+                content,
                 sha256(tc.content().getBytes(StandardCharsets.UTF_8)),
                 tc.content().length(),
                 tc.heading(),

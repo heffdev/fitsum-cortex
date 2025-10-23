@@ -218,7 +218,7 @@ PostgreSQL with pgvector extension:
 
 - `source` - Knowledge source configurations
 - `document` - Original documents with metadata
-- `chunk` - Text chunks with embeddings (vector[1536])
+- `chunk` - Text chunks with embeddings (vector[1024])
 - `qa_log` - Complete audit trail
 - `eval_case`, `eval_run`, `eval_result` - Evaluation framework
 

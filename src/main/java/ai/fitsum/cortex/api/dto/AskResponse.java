@@ -1,16 +1,16 @@
 package ai.fitsum.cortex.api.dto;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 public record AskResponse(
     String answer,
     List<Citation> citations,
-    String confidence,
+    double confidence,
     String sensitivity,
     String provider,
     String traceId,
-    Integer latencyMs
+    Integer latencyMs,
+    String confidenceLabel
 ) {
     public record Citation(
         Long chunkId,

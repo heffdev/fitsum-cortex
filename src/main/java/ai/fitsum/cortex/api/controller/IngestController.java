@@ -3,6 +3,8 @@ package ai.fitsum.cortex.api.controller;
 import ai.fitsum.cortex.ingest.service.IngestionService;
 import ai.fitsum.cortex.api.repository.DocumentRepository;
 import ai.fitsum.cortex.api.repository.ChunkRepository;
+import ai.fitsum.cortex.api.domain.Chunk;
+import ai.fitsum.cortex.api.domain.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -44,6 +46,24 @@ public class IngestController {
         return ResponseEntity.ok(docs);
     }
 
+    @GetMapping("/document/{id}")
+    public ResponseEntity<?> getDocument(@PathVariable("id") Long id) {
+        try {
+            var docOpt = documentRepository.findById(id);
+            if (docOpt.isEmpty()) {
+                log.info("Document {} not found", id);
+                return ResponseEntity.notFound().build();
+            }
+            var doc = docOpt.get();
+            var chunks = chunkRepository.findByDocumentId(id);
+            log.info("Retrieved document id={} title='{}' chunks={}", id, doc.title(), chunks.size());
+            return ResponseEntity.ok(new DocumentWithChunks(doc, chunks));
+        } catch (Exception e) {
+            log.error("Failed to retrieve document {}", id, e);
+            return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
+
     @DeleteMapping("/document/{id}")
     public ResponseEntity<?> delete(@PathVariable("id") Long id) {
         try {
@@ -62,6 +82,8 @@ public class IngestController {
             return ResponseEntity.internalServerError().body(e.getMessage());
         }
     }
+
+    public record DocumentWithChunks(Document document, java.util.List<Chunk> chunks) {}
 }
 
 

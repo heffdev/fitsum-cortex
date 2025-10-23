@@ -7,7 +7,7 @@ CREATE TABLE source (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     source_type VARCHAR(50) NOT NULL,  -- LOCAL_FILES, GMAIL, etc.
-    config_json JSONB,  -- OAuth tokens, paths, etc.
+    config_json TEXT,  -- serialized config (OAuth tokens, paths, etc.)
     is_enabled BOOLEAN DEFAULT true,
     last_sync_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -26,7 +26,7 @@ CREATE TABLE document (
     content_hash VARCHAR(64) NOT NULL,  -- SHA-256 for dedupe
     content_type VARCHAR(100),
     raw_content TEXT,
-    metadata_json JSONB,  -- author, date, labels, etc.
+    metadata_json TEXT,  -- serialized metadata (author, date, labels, etc.)
     indexed_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
@@ -45,15 +45,16 @@ CREATE TABLE chunk (
     content TEXT NOT NULL,
     content_hash VARCHAR(64) NOT NULL,
     token_count INTEGER,
-    heading VARCHAR(512),  -- extracted heading/section
+    heading TEXT,  -- extracted heading/section
     page_number INTEGER,
-    embedding vector(1536),  -- OpenAI ada-002 dimension
+    embedding vector(1024),  -- BGE large v1.5 (1024-dim)
     created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_chunk_document ON chunk(document_id);
 CREATE INDEX idx_chunk_embedding ON chunk USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-CREATE INDEX idx_chunk_content_trgm ON chunk USING gin (content gin_trgm_ops);  -- Full-text search
+CREATE INDEX idx_chunk_content_trgm ON chunk USING gin (content gin_trgm_ops);  -- trigram text search
+CREATE INDEX idx_chunk_content_fts ON chunk USING gin (to_tsvector('english', content));  -- FTS index
 CREATE INDEX idx_chunk_hash ON chunk(content_hash);
 
 -- QA Log: audit trail of all questions and answers

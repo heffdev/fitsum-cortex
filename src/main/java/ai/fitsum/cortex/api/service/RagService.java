@@ -96,6 +96,24 @@ public class RagService {
         List<AskResponse.Citation> citations = buildCitations(chunks);
         
         String answer = response.getResult().getOutput().getContent();
+        // Simple heuristic: combine top reranked score and source agreement
+        double confidenceScore = 0.5;
+        String confidenceLabel = "MEDIUM";
+        if (chunks != null && !chunks.isEmpty()) {
+            double top = chunks.get(0).score();
+            long uniqueDocs = chunks.stream()
+                .map(rc -> rc.chunk().documentId())
+                .distinct().count();
+
+            double topN = normalize(top);
+            double diversity = Math.min(1.0, uniqueDocs / 3.0);
+
+            // Do not penalize single-document answers: use top score directly
+            double blended = (uniqueDocs <= 1) ? topN : (0.6 * topN + 0.4 * diversity);
+
+            confidenceScore = Math.max(0.1, Math.min(0.99, blended));
+            confidenceLabel = confidenceScore >= 0.80 ? "HIGH" : (confidenceScore >= 0.60 ? "MEDIUM" : "LOW");
+        }
         String sensitivity = (String) adviseContext.getOrDefault("sensitivity", "NONE");
         String provider = (String) adviseContext.getOrDefault("provider", "OPENAI");
         
@@ -104,11 +122,12 @@ public class RagService {
         return new AskResponse(
             answer,
             citations,
-            "MEDIUM",  // TODO: extract from structured output
+            confidenceScore,
             sensitivity,
             provider,
             traceId,
-            latency
+            latency,
+            confidenceLabel
         );
     }
     
@@ -156,6 +175,14 @@ public class RagService {
             log.warn("Could not load system prompt, using default", e);
             return "You are a helpful assistant that answers based strictly on provided context.";
         }
+    }
+
+    private double normalize(double score) {
+        // ReRanker currently yields ~0..1; guard in case of different scales
+        if (Double.isNaN(score) || Double.isInfinite(score)) return 0.0;
+        if (score < 0) return 0.0;
+        if (score > 1) return 1.0;
+        return score;
     }
 }
 

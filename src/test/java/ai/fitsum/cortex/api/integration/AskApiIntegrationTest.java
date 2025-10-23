@@ -73,8 +73,8 @@ class AskApiIntegrationTest {
         doc = documentRepository.save(doc);
         
         // Create chunk with dummy embedding
-        float[] embedding = new float[1536];
-        for (int i = 0; i < 1536; i++) {
+        float[] embedding = new float[1024];
+        for (int i = 0; i < 1024; i++) {
             embedding[i] = (float) (Math.random() - 0.5);
         }
         

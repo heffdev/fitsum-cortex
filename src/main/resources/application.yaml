@@ -1,19 +1,14 @@
 spring:
   application:
     name: fitsum-cortex-api
-
+  
   main:
     web-application-type: servlet
+  
   autoconfigure:
     exclude:
       - org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
-      - com.vaadin.flow.spring.VaadinAutoConfiguration
-      - com.vaadin.flow.spring.VaadinServletConfiguration
-      - com.vaadin.flow.spring.VaadinObservabilityAutoConfiguration
-      - dev.hilla.boot.HillaAutoConfiguration
-
-vaadin:
-  enabled: false
+      - org.springframework.ai.autoconfigure.transformers.TransformersAutoConfiguration
 
   datasource:
     url: jdbc:postgresql://localhost:5432/cortex_dev
@@ -27,34 +22,34 @@ vaadin:
     locations: classpath:db/migration
 
   ai:
-    ollama:
-      enabled: false
     openai:
-      base-url: http://10.5.0.2:1234
+      base-url: ${OPENAI_BASE_URL:http://localhost:1234}
       api-key: ${OPENAI_API_KEY:lm-studio}
       chat:
         options:
           model: qwen/qwen3-4b-2507
           temperature: 0.1
-          timeout: 300s
-          max-retries: 3
+          timeout: 30s
+          max-retries: 2
       embedding:
         options:
-          model: text-embedding-ada-002
+          model: text-embedding-bge-large-en-v1.5
           timeout: 300s
-          max-retries: 3
+          max-retries: 2
 
     vectorstore:
       pgvector:
         initialize-schema: false
         index-type: IVFFLAT
         distance-type: COSINE_DISTANCE
-        dimensions: 384
+        dimensions: 1024
 
 server:
   port: 8080
 
-# Cortex-specific configuration
+vaadin:
+  enabled: false
+
 cortex:
   retrieval:
     max-chunks: 12
@@ -62,7 +57,7 @@ cortex:
     ann-top-k: 25
     rerank-top-k: 10
     similarity-threshold: 0.7
-    allow-empty-context: true
+    allow-empty-context: false
 
   sensitivity:
     patterns:
@@ -76,7 +71,7 @@ cortex:
         - "\\bdo not share\\b"
 
   ingestion:
-    chunk-size-tokens: 400
+    chunk-size-tokens: 380
     chunk-overlap-percent: 15
     batch-size: 50
 
@@ -93,9 +88,9 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: false # Temporarily disabled
   tracing:
     enabled: false # Temporarily disabled
@@ -107,4 +102,3 @@ logging:
     ai.fitsum.cortex: DEBUG
     org.springframework.ai: INFO
     org.flywaydb: INFO
-

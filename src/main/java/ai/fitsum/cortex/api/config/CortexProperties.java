@@ -20,7 +20,7 @@ public class CortexProperties {
         private int maxChunks = 12;
         private int ftsTopK = 25;
         private int annTopK = 25;
-        private int rerankTopK = 10;
+        private int rerankTopK = 15;
         private double similarityThreshold = 0.7;
         private boolean allowEmptyContext = false;
         
