@@ -28,4 +28,6 @@ body {
   @apply w-full rounded-md border border-gray-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500;
 }
 
+/* Remove custom @apply to avoid circular dependency; use utility classes directly in JSX */
+
 

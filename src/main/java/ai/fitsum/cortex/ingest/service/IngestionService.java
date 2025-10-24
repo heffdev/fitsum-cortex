@@ -125,6 +125,76 @@ public class IngestionService {
         );
     }
 
+    @Transactional
+    public IngestionResult ingestText(String title, String content, java.util.List<String> tags) throws Exception {
+        // Ensure a LOCAL_FILES source exists (reusing the same logical source)
+        Long sourceId = ensureLocalFilesSource();
+
+        String normalizedTitle = title != null && !title.isBlank() ? title.trim() : "Quick note";
+        String text = content == null ? "" : content.trim();
+        if (text.isEmpty()) {
+            throw new IllegalArgumentException("content must not be empty");
+        }
+
+        String contentHash = sha256(text.getBytes(StandardCharsets.UTF_8));
+        var existing = documentRepository.findBySourceIdAndContentHash(sourceId, contentHash);
+        if (existing.isPresent()) {
+            return new IngestionResult(
+                existing.get().id(),
+                normalizedTitle,
+                normalizedTitle,
+                text.length(),
+                java.time.Instant.now(),
+                true
+            );
+        }
+
+        Document document = Document.create(
+            sourceId,
+            normalizedTitle,
+            normalizedTitle,
+            contentHash,
+            "text/plain",
+            text,
+            null
+        );
+        document = documentRepository.save(document);
+
+        // Chunk the provided text
+        List<ChunkingService.TextChunk> textChunks = chunkingService.chunk(text, normalizedTitle);
+
+        for (ChunkingService.TextChunk tc : textChunks) {
+            int targetTokens = properties.getIngestion().getChunkSizeTokens();
+            int maxChars = (int) Math.round(targetTokens * 3.2);
+            String c = tc.content();
+            if (c.length() > maxChars) c = c.substring(0, maxChars);
+            float[] emb = embeddingModel.embed(c);
+            if (emb == null || emb.length != embeddingDimensions) {
+                throw new IllegalStateException("Embedding dimension mismatch: expected " + embeddingDimensions + ", got " + (emb == null ? 0 : emb.length));
+            }
+            Chunk chunk = Chunk.create(
+                document.id(),
+                tc.index(),
+                c,
+                sha256(tc.content().getBytes(StandardCharsets.UTF_8)),
+                tc.content().length(),
+                tc.heading(),
+                tc.pageNumber(),
+                emb
+            );
+            chunkRepository.save(chunk);
+        }
+
+        return new IngestionResult(
+            document.id(),
+            normalizedTitle,
+            normalizedTitle,
+            text.length(),
+            java.time.Instant.now(),
+            false
+        );
+    }
+
     private Long ensureLocalFilesSource() {
         var list = sourceRepository.findBySourceType("LOCAL_FILES");
         if (list != null && !list.isEmpty()) {

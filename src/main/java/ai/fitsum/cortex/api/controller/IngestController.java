@@ -7,6 +7,8 @@ import ai.fitsum.cortex.api.domain.Chunk;
 import ai.fitsum.cortex.api.domain.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +31,8 @@ public class IngestController {
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
     public ResponseEntity<?> upload(@RequestPart("file") MultipartFile file) {
         try {
             byte[] bytes = file.getBytes();
@@ -36,6 +40,26 @@ public class IngestController {
             return ResponseEntity.ok(result.documentId());
         } catch (Exception e) {
             log.error("Upload failed", e);
+            return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
+
+    @PostMapping(value = "/text", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    @Transactional
+    public ResponseEntity<?> ingestText(@RequestBody TextIngestRequest request) {
+        try {
+            if (request == null || request.content == null || request.content.isBlank()) {
+                return ResponseEntity.badRequest().body("content is required");
+            }
+            var result = ingestionService.ingestText(
+                request.title != null && !request.title.isBlank() ? request.title.trim() : "Quick note",
+                request.content,
+                request.tags
+            );
+            return ResponseEntity.ok(result.documentId());
+        } catch (Exception e) {
+            log.error("Text ingest failed", e);
             return ResponseEntity.internalServerError().body(e.getMessage());
         }
     }
@@ -84,6 +108,8 @@ public class IngestController {
     }
 
     public record DocumentWithChunks(Document document, java.util.List<Chunk> chunks) {}
+
+    public record TextIngestRequest(String title, String content, java.util.List<String> tags) {}
 }
 
 

@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Brain, Eye, X } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import gfm from 'remark-gfm'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080'
 
@@ -383,6 +385,14 @@ Details: ${msg}`)
           <div className="font-semibold">🧠 Fitsum Cortex</div>
         </div>
       </header>
+      {/* Quick Add card */}
+      <div className="container mt-4">
+        <div className="mx-auto w-full">
+          <div className="card mb-4">
+            <QuickAdd onSaved={onUploaded} />
+          </div>
+        </div>
+      </div>
       {/* Full-width container with small gutters that adapts to screen size */}
       <main className="container mt-6">
         <div className="mx-auto w-full">
@@ -403,7 +413,11 @@ Details: ${msg}`)
                 </div>
               </div>
               <div className="card space-y-2">
-                <div className="prose max-w-none whitespace-pre-wrap">{answer}</div>
+                <div className="prose md:prose-lg max-w-none">
+                  <ReactMarkdown remarkPlugins={[gfm]}>
+                    {answer}
+                  </ReactMarkdown>
+                </div>
                 {confidence != null && confidenceLabel && (
                   <div className="text-sm text-gray-600">
                     Confidence: <span className="font-medium">{confidenceLabel}</span> ({confidence.toFixed(2)})
@@ -427,6 +441,103 @@ Details: ${msg}`)
       )}
     </div>
   )
+}
+
+function QuickAdd({ onSaved }: { onSaved: () => void }) {
+  const [tab, setTab] = useState<'text' | 'voice'>('text')
+  const [title, setTitle] = useState('')
+  const [tags, setTags] = useState('')
+  const [text, setText] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
+
+  // Voice transcription via Web Speech API (if available)
+  useEffect(() => {
+    if (tab !== 'voice') return
+    let recognition: any
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      recognition = new SR()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+      // Append only FINAL results to main text; keep interim preview ephemeral
+      recognition.onresult = (event: any) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i]
+          const phrase = (res[0]?.transcript || '').trim()
+          if (!phrase) continue
+          if (res.isFinal) {
+            setText(prev => dedupAppend(prev, phrase))
+          } else {
+            // optional: could set a live preview state here if desired
+          }
+        }
+      }
+      if (recording) recognition.start()
+      return () => { try { recognition && recognition.stop() } catch {} }
+    } else {
+      setStatus('Voice input not supported in this browser. Use Text tab or native dictation.')
+    }
+  }, [tab, recording])
+
+  const save = async () => {
+    const body = { title: title.trim() || undefined, content: text, tags: tags.split(',').map(s => s.trim()).filter(Boolean) }
+    if (!body.content || !body.content.trim()) { setStatus('Please enter some text.'); return }
+    setStatus('Saving…')
+    const res = await fetch(`${API_BASE}/v1/ingest/text`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const t = await res.text()
+    if (!res.ok) { setStatus(`Failed: ${t}`); return }
+    setStatus('Saved')
+    setTitle(''); setTags(''); setText('')
+    onSaved()
+    setTimeout(() => setStatus(null), 1500)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-3">
+        <button className={`text-sm ${tab==='text'?'font-semibold text-blue-600':'text-gray-600'}`} onClick={() => setTab('text')}>Text</button>
+        <button className={`text-sm ${tab==='voice'?'font-semibold text-blue-600':'text-gray-600'}`} onClick={() => setTab('voice')}>Voice</button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <input className="input" placeholder="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
+        <input className="input" placeholder="Tags comma-separated (optional)" value={tags} onChange={e => setTags(e.target.value)} />
+        <div className="flex items-center gap-3">
+          <button className="btn" onClick={save}>Save to knowledge base</button>
+          {status && <span className="text-sm text-gray-600">{status}</span>}
+        </div>
+      </div>
+      <div className="mt-3">
+        {tab === 'text' ? (
+          <textarea className="input min-h-[120px]" placeholder="Paste or type notes…" value={text} onChange={e => setText(e.target.value)} />
+        ) : (
+          <div className="flex items-center gap-3">
+            <button className="btn" onClick={() => setRecording(r => !r)}>{recording ? 'Stop' : 'Record'}</button>
+            <span className="text-sm text-gray-600">{recording ? 'Listening…' : 'Use browser/OS dictation if supported'}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Prevent duplicate progressive prefixes when appending dictation
+function dedupAppend(existing: string, phrase: string): string {
+  const prev = existing.trim()
+  if (!prev) return phrase
+  // If phrase starts with the last up-to 50 chars of prev, remove that overlap
+  const tail = prev.slice(Math.max(0, prev.length - 50))
+  if (phrase.startsWith(tail)) {
+    return (prev + ' ' + phrase.slice(tail.length)).trim()
+  }
+  // Collapse repeated word at boundary (e.g., "...today" + "today ...")
+  const lastWordMatch = prev.match(/(\b\w+)$'/)
+  const lastWord = lastWordMatch ? lastWordMatch[1] : ''
+  if (lastWord && phrase.toLowerCase().startsWith(lastWord.toLowerCase() + ' ')) {
+    return (prev + ' ' + phrase.slice(lastWord.length + 1)).trim()
+  }
+  return (prev + ' ' + phrase).trim()
 }
 
 
