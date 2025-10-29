@@ -80,6 +80,14 @@ cortex:
     enabled: false # Temporarily disabled
     export-endpoint: http://localhost:4318
 
+  watcher:
+    enabled: true
+    root: D:/Knowledge
+    processed-root: D:/Knowledge_Processed
+    recursive: true
+    poll-interval: PT30S
+    ignore-globs: ["**/*.tmp","**/~$*"]
+
 management:
   endpoints:
     web:
