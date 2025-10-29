@@ -8,7 +8,6 @@ import ai.fitsum.cortex.api.domain.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,7 +31,6 @@ public class IngestController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("isAuthenticated()")
-    @Transactional
     public ResponseEntity<?> upload(@RequestPart("file") MultipartFile file) {
         try {
             byte[] bytes = file.getBytes();
@@ -44,9 +42,24 @@ public class IngestController {
         }
     }
 
+    @PostMapping(value = "/url", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> ingestUrl(@RequestBody UrlIngestRequest request) {
+        try {
+            if (request == null || request.url == null || request.url.isBlank()) {
+                return ResponseEntity.badRequest().body("url is required");
+            }
+            var result = ingestionService.ingestUrl(request.url.trim());
+            return ResponseEntity.ok(result.documentId());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.unprocessableEntity().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("URL ingest failed", e);
+            return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
     @PostMapping(value = "/text", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("isAuthenticated()")
-    @Transactional
     public ResponseEntity<?> ingestText(@RequestBody TextIngestRequest request) {
         try {
             if (request == null || request.content == null || request.content.isBlank()) {
@@ -58,6 +71,8 @@ public class IngestController {
                 request.tags
             );
             return ResponseEntity.ok(result.documentId());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.unprocessableEntity().body(e.getMessage());
         } catch (Exception e) {
             log.error("Text ingest failed", e);
             return ResponseEntity.internalServerError().body(e.getMessage());
@@ -110,6 +125,8 @@ public class IngestController {
     public record DocumentWithChunks(Document document, java.util.List<Chunk> chunks) {}
 
     public record TextIngestRequest(String title, String content, java.util.List<String> tags) {}
+
+    public record UrlIngestRequest(String url) {}
 }
 
 

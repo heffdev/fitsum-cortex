@@ -127,8 +127,19 @@ public class IngestionService {
 
     @Transactional
     public IngestionResult ingestText(String title, String content, java.util.List<String> tags) throws Exception {
+        return ingestText(title, content, tags, null, Source.SourceType.LOCAL_FILES);
+    }
+
+    @Transactional
+    public IngestionResult ingestText(
+        String title,
+        String content,
+        java.util.List<String> tags,
+        String metadataJson,
+        Source.SourceType sourceType
+    ) throws Exception {
         // Ensure a LOCAL_FILES source exists (reusing the same logical source)
-        Long sourceId = ensureLocalFilesSource();
+        Long sourceId = (sourceType == Source.SourceType.WEB_URL) ? ensureWebUrlSource() : ensureLocalFilesSource();
 
         String normalizedTitle = title != null && !title.isBlank() ? title.trim() : "Quick note";
         String text = content == null ? "" : content.trim();
@@ -156,7 +167,7 @@ public class IngestionService {
             contentHash,
             "text/plain",
             text,
-            null
+            metadataJson
         );
         document = documentRepository.save(document);
 
@@ -194,6 +205,27 @@ public class IngestionService {
             false
         );
     }
+
+    @Transactional
+    public IngestionResult ingestUrl(String url) throws Exception {
+        // Minimal metadata to keep original URL
+        String metadata = "{\"url\":\"" + url.replace("\"", "\\\"") + "\"}";
+        ExtractedPage page = UrlFetcher.fetchReadable(url);
+        String title = page.title() != null && !page.title().isBlank() ? page.title() : url;
+        return ingestText(title, page.text(), java.util.List.of("web"), metadata, Source.SourceType.WEB_URL);
+    }
+
+    private Long ensureWebUrlSource() {
+        var list = sourceRepository.findBySourceType("WEB_URL");
+        if (list != null && !list.isEmpty()) {
+            return list.get(0).id();
+        }
+        Source src = Source.create("Web URLs", Source.SourceType.WEB_URL, null);
+        src = sourceRepository.save(src);
+        return src.id();
+    }
+
+    public record ExtractedPage(String title, String text) {}
 
     private Long ensureLocalFilesSource() {
         var list = sourceRepository.findBySourceType("LOCAL_FILES");

@@ -424,6 +424,21 @@ Details: ${msg}`)
                 />
                 <div className="mt-2 flex items-center gap-3">
                   <button className="btn" onClick={() => ask.mutate()} disabled={loading || !question.trim()}>Ask</button>
+                  {/^https?:\/\/\S+$/i.test(question.trim()) && (
+                    <button className="text-sm text-blue-600" onClick={async () => {
+                      const url = question.trim();
+                      setToast('Fetching URL…')
+                      try {
+                        const res = await fetch(`${API_BASE}/v1/ingest/url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })
+                        const t = await res.text();
+                        if (!res.ok) throw new Error(t)
+                        setToast('URL ingested successfully')
+                        await qc.invalidateQueries({ queryKey: ['recent'] })
+                      } catch (e:any) {
+                        setToast(`URL ingest failed: ${e?.message ?? e}`)
+                      }
+                    }}>Ingest URL</button>
+                  )}
                   <label className="flex items-center gap-2 text-sm text-gray-600">
                     <input type="checkbox" checked={allowFallback} onChange={e => setAllowFallback(e.target.checked)} />
                     Allow general knowledge fallback

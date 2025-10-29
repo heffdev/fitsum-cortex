@@ -18,7 +18,8 @@ public record Source(
 ) {
     public enum SourceType {
         LOCAL_FILES,
-        GMAIL
+        GMAIL,
+        WEB_URL
     }
     
     public static Source create(String name, SourceType sourceType, String configJson) {
