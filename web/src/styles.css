@@ -30,4 +30,12 @@ body {
 
 /* Remove custom @apply to avoid circular dependency; use utility classes directly in JSX */
 
+/* Editor modal adjustments */
+.overlay-backdrop {
+  @apply fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4;
+}
+.overlay-card {
+  @apply bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-auto;
+}
+
 

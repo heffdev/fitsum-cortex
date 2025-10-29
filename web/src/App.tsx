@@ -4,6 +4,8 @@ import { useDropzone } from 'react-dropzone'
 import { Brain, Eye, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import gfm from 'remark-gfm'
+import MdEditor from 'react-markdown-editor-lite'
+import 'react-markdown-editor-lite/lib/index.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080'
 
@@ -45,6 +47,8 @@ type DocumentWithChunks = {
   document: Document
   chunks: Chunk[]
 }
+
+type QuickMode = 'text' | 'voice'
 
 function GlobalDropOverlay({ onFiles }: { onFiles: (files: File[]) => void }) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -305,6 +309,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const sessionRef = useRef<string>(() => crypto.randomUUID() as any as string)
   const qc = useQueryClient()
+  const [quickOpen, setQuickOpen] = useState<QuickMode | null>(null)
 
   // auto-hide toast
   useEffect(() => {
@@ -388,8 +393,9 @@ Details: ${msg}`)
       {/* Quick Add card */}
       <div className="container mt-4">
         <div className="mx-auto w-full">
-          <div className="card mb-4">
-            <QuickAdd onSaved={onUploaded} />
+          <div className="flex items-center gap-4">
+            <button className="text-sm text-blue-600 hover:underline" onClick={() => setQuickOpen('text')}>Add text note</button>
+            <button className="text-sm text-blue-600 hover:underline" onClick={() => setQuickOpen('voice')}>Add voice note</button>
           </div>
         </div>
       </div>
@@ -402,14 +408,27 @@ Details: ${msg}`)
           <div className="grid grid-cols-1 gap-6">
             <section className="space-y-3">
               <div className="card">
-                <textarea className="input min-h-[100px]" placeholder="Ask a question about your knowledge base..."
-                  value={question} onChange={e => setQuestion(e.target.value)} />
+                <textarea
+                  className="input min-h-[100px]"
+                  placeholder="Ask a question about your knowledge base..."
+                  value={question}
+                  onChange={e => setQuestion(e.target.value)}
+                  onKeyDown={e => {
+                    if (loading) { e.preventDefault(); return; }
+                    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+                      e.preventDefault();
+                      if (question.trim()) ask.mutate();
+                    }
+                    // For Ctrl+Enter (or Cmd+Enter), do nothing so the browser inserts a newline by default
+                  }}
+                />
                 <div className="mt-2 flex items-center gap-3">
                   <button className="btn" onClick={() => ask.mutate()} disabled={loading || !question.trim()}>Ask</button>
                   <label className="flex items-center gap-2 text-sm text-gray-600">
                     <input type="checkbox" checked={allowFallback} onChange={e => setAllowFallback(e.target.checked)} />
                     Allow general knowledge fallback
                   </label>
+                  <div className="ml-auto text-xs text-gray-500">Press Enter to send • Ctrl+Enter for newline</div>
                 </div>
               </div>
               <div className="card space-y-2">
@@ -436,6 +455,20 @@ Details: ${msg}`)
           </div>
         </div>
       </main>
+      {quickOpen && (
+        <QuickOverlay mode={quickOpen} onClose={() => setQuickOpen(null)} onSaved={onUploaded} />
+      )}
+      {loading && (
+        <div className="fixed inset-0 z-30 bg-black/20 flex items-start justify-center pt-24" aria-busy="true" aria-label="AI processing">
+          <div className="bg-white border border-gray-200 rounded-md shadow px-3 py-2 text-sm flex items-center gap-2">
+            <svg className="animate-spin h-4 w-4 text-blue-600" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span>Thinking…</span>
+          </div>
+        </div>
+      )}
       {toast && (
         <div className="fixed right-4 bottom-4 card shadow-lg">{toast}</div>
       )}
@@ -522,6 +555,96 @@ function QuickAdd({ onSaved }: { onSaved: () => void }) {
   )
 }
 
+function QuickOverlay({ mode, onClose, onSaved }: { mode: QuickMode, onClose: () => void, onSaved: () => void }) {
+  const [title, setTitle] = useState('')
+  const [tags, setTags] = useState('')
+  const [text, setText] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (mode !== 'voice') return
+    let recognition: any
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      recognition = new SR()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+      recognition.onresult = (event: any) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i]
+          const phrase = (res[0]?.transcript || '').trim()
+          if (!phrase) continue
+          if (res.isFinal) setText(prev => dedupAppend(prev, phrase))
+        }
+      }
+      if (recording) recognition.start()
+      return () => { try { recognition && recognition.stop() } catch {} }
+    } else {
+      setStatus('Voice input not supported in this browser. Use Text note instead.')
+    }
+  }, [mode, recording])
+
+  const save = async () => {
+    const body = { title: title.trim() || undefined, content: text, tags: tags.split(',').map(s => s.trim()).filter(Boolean) }
+    if (!body.content || !body.content.trim()) { setStatus('Please enter some text.'); return }
+    setStatus('Saving…')
+    const res = await fetch(`${API_BASE}/v1/ingest/text`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const t = await res.text()
+    if (!res.ok) { setStatus(`Failed: ${t}`); return }
+    setStatus('Saved')
+    setTitle(''); setTags(''); setText('')
+    onSaved(); onClose()
+  }
+
+  return (
+    <div className="overlay-backdrop" role="dialog" aria-modal="true">
+      <div className="overlay-card">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="font-semibold">{mode === 'text' ? 'Add text note' : 'Add voice note'}</div>
+          <button className="text-gray-500 hover:text-gray-700" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input className="input" placeholder="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
+            <input className="input" placeholder="Tags comma-separated (optional)" value={tags} onChange={e => setTags(e.target.value)} />
+            <div className="flex items-center gap-3">
+              <button className="btn" onClick={save}>Save to knowledge base</button>
+              {status && <span className="text-sm text-gray-600">{status}</span>}
+            </div>
+          </div>
+          {mode === 'text' ? (
+            <div className="min-h-[300px]">
+              <MdEditor
+                value={text}
+                style={{ height: '300px' }}
+                renderHTML={md => md}
+                onChange={({ text }) => setText(text)}
+              />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <button className="btn" onClick={() => setRecording(r => !r)}>{recording ? 'Stop' : 'Record'}</button>
+                <span className="text-sm text-gray-600">{recording ? 'Listening…' : 'Press to start recording'}</span>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Transcript (editable):</label>
+                <MdEditor
+                  value={text}
+                  style={{ height: '300px' }}
+                  renderHTML={md => md}
+                  onChange={({ text }) => setText(text)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 // Prevent duplicate progressive prefixes when appending dictation
 function dedupAppend(existing: string, phrase: string): string {
   const prev = existing.trim()

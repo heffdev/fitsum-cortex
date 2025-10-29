@@ -22,13 +22,24 @@ public interface ChunkRepository extends CrudRepository<Chunk, Long> {
     List<Chunk> findByIdIn(@Param("ids") Long[] ids);
     
     @Query("""
+        WITH q AS (
+            SELECT websearch_to_tsquery('english', :query) AS tsq, :query AS raw
+        )
         SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
-               c.token_count, c.heading, c.page_number, c.created_at,
-               ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', :query)) as rank
-        FROM chunk c
-        WHERE to_tsvector('english', c.content) @@ plainto_tsquery('english', :query)
-        ORDER BY rank DESC
-        LIMIT :limit
+               c.token_count, c.heading, c.page_number, c.created_at
+        FROM (
+            SELECT c.id
+            FROM chunk c, q
+            WHERE to_tsvector('english', c.content) @@ q.tsq
+               OR c.content % q.raw
+            ORDER BY (
+                ts_rank(to_tsvector('english', c.content), q.tsq) * 0.7
+              + similarity(c.content, q.raw) * 0.3
+            ) DESC
+            LIMIT :limit
+        ) ids
+        JOIN chunk c ON c.id = ids.id
+        ORDER BY c.id
         """)
     List<Chunk> fullTextSearch(@Param("query") String query, @Param("limit") int limit);
     
