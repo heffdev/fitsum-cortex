@@ -112,7 +112,7 @@ function UploadCard({ onUploaded }: { onUploaded: () => void }) {
 }
 
 function DocumentDetailModal({ documentId, onClose }: { documentId: number | null, onClose: () => void }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['document', documentId],
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/v1/ingest/document/${documentId}`)
@@ -138,7 +138,10 @@ function DocumentDetailModal({ documentId, onClose }: { documentId: number | nul
           </button>
         </div>
         
-        {data && (
+        {error && (
+          <div className="p-4 text-sm text-red-700 bg-red-50 border-b">{(error as any)?.message || 'Failed to load document.'}</div>
+        )}
+        {data && !error && (
           <div className="flex-1 overflow-hidden">
             <div className="flex border-b">
               <button
@@ -170,7 +173,7 @@ function DocumentDetailModal({ documentId, onClose }: { documentId: number | nul
                     <p><strong>Content Hash:</strong> {data.document.contentHash}</p>
                   </div>
                   <div className="prose max-w-none">
-                    <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-3 rounded border">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-900 bg-gray-50 p-3 rounded border">
                       {data.document.rawContent || 'No content available'}
                     </pre>
                   </div>

@@ -11,7 +11,14 @@ import java.util.List;
 @Repository
 public interface ChunkRepository extends CrudRepository<Chunk, Long> {
     
-    List<Chunk> findByDocumentId(Long documentId);
+    @Query("""
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
+               c.token_count, c.heading, c.page_number, c.created_at
+        FROM chunk c
+        WHERE c.document_id = :documentId
+        ORDER BY c.chunk_index
+        """)
+    List<Chunk> findByDocumentId(@Param("documentId") Long documentId);
     
     @Query("""
         SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
