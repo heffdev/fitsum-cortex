@@ -1,6 +1,5 @@
 package ai.fitsum.cortex.ingest.service;
 
-import org.apache.tika.exception.TikaException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
@@ -25,7 +24,12 @@ public class DocumentNormalizer {
     private static final Logger log = LoggerFactory.getLogger(DocumentNormalizer.class);
     
     private final AutoDetectParser parser = new AutoDetectParser();
+    private final OcrService ocrService;
     
+    public DocumentNormalizer(OcrService ocrService) {
+        this.ocrService = ocrService;
+    }
+
     public NormalizedDocument normalize(byte[] rawContent, String fileName) throws IOException {
         try {
             BodyContentHandler handler = new BodyContentHandler(-1);  // no limit
@@ -45,6 +49,21 @@ public class DocumentNormalizer {
             String title = extractTitle(metadata, fileName);
             String contentHash = computeSha256(rawContent);
             
+            // Fallback to OCR when enabled and extracted text is empty/minimal
+            if (ocrService.isEnabled()) {
+                boolean isPdf = (contentType != null && contentType.contains("pdf"))
+                    || (fileName != null && fileName.toLowerCase().endsWith(".pdf"));
+                boolean isImage = contentType != null && contentType.startsWith("image/");
+                boolean needsOcr = text == null || text.isBlank() || text.length() < 20;
+                if (needsOcr && (isPdf || isImage)) {
+                    String ocrText = isPdf ? ocrService.ocrPdf(rawContent) : ocrService.ocrImage(rawContent);
+                    if (ocrText != null && !ocrText.isBlank()) {
+                        text = ocrText;
+                        metadata.add("ocr", "true");
+                    }
+                }
+            }
+
             log.debug("Normalized document: {} (type: {}, {} chars)", title, contentType, text.length());
             
             return new NormalizedDocument(

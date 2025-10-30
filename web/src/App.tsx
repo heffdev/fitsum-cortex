@@ -69,19 +69,71 @@ function GlobalDropOverlay({ onFiles }: { onFiles: (files: File[]) => void }) {
 }
 
 function FloatingUploadTarget({ onFiles }: { onFiles: (files: File[]) => void }) {
+  // Draggable position persisted in localStorage
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 16, y: 100 })
+  const draggingRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('uploadWidgetPos')
+      if (saved) {
+        const p = JSON.parse(saved)
+        if (typeof p?.x === 'number' && typeof p?.y === 'number') setPos(p)
+      } else {
+        // Default: bottom-left with 16px margin, approximate tile height
+        setPos({ x: 16, y: Math.max(16, window.innerHeight - 100) })
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('uploadWidgetPos', JSON.stringify(pos)) } catch {}
+  }, [pos])
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    draggingRef.current = { startX: e.clientX, startY: e.clientY, startLeft: pos.x, startTop: pos.y }
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!draggingRef.current) return
+    const dx = e.clientX - draggingRef.current.startX
+    const dy = e.clientY - draggingRef.current.startY
+    const x = Math.max(8, Math.min(window.innerWidth - 140, draggingRef.current.startLeft + dx))
+    const y = Math.max(8, Math.min(window.innerHeight - 60, draggingRef.current.startTop + dy))
+    setPos({ x, y })
+  }
+  const onPointerUp = (e: React.PointerEvent) => {
+    draggingRef.current = null
+    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+  }
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: accepted => accepted?.length && onFiles(accepted),
-  });
+  })
+
   return (
-    <div
-      {...getRootProps()}
-      className={`fixed left-4 bottom-4 z-30 card cursor-pointer ${isDragActive ? 'ring-2 ring-blue-400' : ''}`}
-      title="Click or drop a file to ingest"
-    >
-      <input {...getInputProps()} />
-      <div className="text-sm text-gray-700">Click or drop to ingest</div>
+    <div className="fixed z-30" style={{ left: pos.x, top: pos.y }}>
+      {/* Drag handle */}
+      <div
+        className="w-full px-2 py-1 text-[10px] text-gray-500 cursor-move select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        title="Drag to move"
+      >
+        Drag
+      </div>
+      {/* Click/Drop area */}
+      <div
+        {...getRootProps()}
+        className={`card cursor-pointer ${isDragActive ? 'ring-2 ring-blue-400' : ''}`}
+        title="Click or drop a file to ingest"
+      >
+        <input {...getInputProps()} />
+        <div className="text-sm text-gray-700">Click or drop to ingest</div>
+      </div>
     </div>
-  );
+  )
 }
 
 function UploadCard({ onUploaded }: { onUploaded: () => void }) {

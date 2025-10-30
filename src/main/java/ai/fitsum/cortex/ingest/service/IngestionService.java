@@ -47,6 +47,22 @@ public class IngestionService {
         this.properties = properties;
     }
 
+    private String buildMetadataJson(DocumentNormalizer.NormalizedDocument normalized) {
+        try {
+            var md = normalized.metadata();
+            boolean ocr = md.get("ocr") != null && !md.get("ocr").isBlank();
+            String contentType = normalized.contentType();
+            StringBuilder json = new StringBuilder();
+            json.append('{');
+            json.append("\"contentType\":\"").append(contentType == null ? "" : contentType.replace("\"", "\\\"")).append("\"");
+            if (ocr) json.append(",\"ocr\":true");
+            json.append('}');
+            return json.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Transactional
     public IngestionResult ingestLocalFile(byte[] rawBytes, String filename) throws Exception {
         // Ensure a LOCAL_FILES source exists
@@ -54,6 +70,11 @@ public class IngestionService {
 
         // Normalize & compute content hash
         DocumentNormalizer.NormalizedDocument normalized = documentNormalizer.normalize(rawBytes, filename);
+        if (normalized.text() == null || normalized.text().isBlank()) {
+            throw new IllegalArgumentException(
+                "No extractable text found in document. If this is a scanned PDF or image-only PDF, enable OCR via 'cortex.ocr.enabled=true' and try again."
+            );
+        }
 
         // Deduplicate by (source_id, content_hash)
         var existing = documentRepository.findBySourceIdAndContentHash(sourceId, normalized.contentHash());
@@ -76,7 +97,7 @@ public class IngestionService {
             normalized.contentHash(),
             normalized.contentType(),
             normalized.text(), // Store raw content
-            null
+            buildMetadataJson(normalized)
         );
         document = documentRepository.save(document);
 
