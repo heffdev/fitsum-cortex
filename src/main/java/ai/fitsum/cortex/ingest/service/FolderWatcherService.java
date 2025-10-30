@@ -25,6 +25,13 @@ public class FolderWatcherService {
     private final WatcherStateRepository stateRepository;
     private final org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate namedJdbc;
 
+    // Runtime stats
+    private volatile long lastScanStart = 0L;
+    private volatile long lastScanEnd = 0L;
+    private volatile int lastScanned = 0;
+    private volatile int lastIngested = 0;
+    private volatile int lastFailed = 0;
+
     public FolderWatcherService(WatcherProperties props, IngestionService ingestionService, WatcherStateRepository stateRepository,
                                 org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate namedJdbc) {
         this.props = props;
@@ -35,10 +42,18 @@ public class FolderWatcherService {
 
     @Scheduled(fixedDelayString = "${cortex.watcher.poll-interval:PT30S}")
     public void poll() {
-        if (!props.isEnabled()) return;
-        if (props.getRoot() == null || props.getRoot().isBlank()) return;
+        scanInternal();
+    }
+
+    public void scanNow() { scanInternal(); }
+
+    private void scanInternal() {
+        lastScanStart = System.currentTimeMillis();
+        lastScanned = lastIngested = lastFailed = 0;
+        if (!props.isEnabled()) { lastScanEnd = System.currentTimeMillis(); return; }
+        if (props.getRoot() == null || props.getRoot().isBlank()) { lastScanEnd = System.currentTimeMillis(); return; }
         Path root = Paths.get(props.getRoot());
-        if (!Files.isDirectory(root)) return;
+        if (!Files.isDirectory(root)) { lastScanEnd = System.currentTimeMillis(); return; }
         try {
             int maxDepth = props.isRecursive() ? Integer.MAX_VALUE : 1;
             Set<String> ext = new HashSet<>(props.getExtensions());
@@ -48,12 +63,15 @@ public class FolderWatcherService {
             }
             try (var stream = Files.walk(root, maxDepth)) {
                 stream.filter(Files::isRegularFile)
+                    .peek(p -> lastScanned++)
                     .filter(p -> !isIgnored(root, p, ignores))
                     .filter(p -> hasAllowedExtension(p, ext))
                     .forEach(p -> ingestIfChanged(root, p));
             }
         } catch (IOException e) {
             log.warn("Folder watcher scan error", e);
+        } finally {
+            lastScanEnd = System.currentTimeMillis();
         }
     }
 
@@ -89,12 +107,14 @@ public class FolderWatcherService {
             String hash = sha256(bytes);
             upsertState(key, lm, size, hash);
             log.info("Ingested file via watcher: {} -> doc {}", file, result.documentId());
+            lastIngested++;
 
             // Move processed file if configured
             if (props.getProcessedRoot() != null && !props.getProcessedRoot().isBlank()) {
                 moveToProcessed(root, file);
             }
         } catch (Exception e) {
+            lastFailed++;
             log.warn("Failed to ingest file {}", file, e);
         }
     }
@@ -134,6 +154,34 @@ public class FolderWatcherService {
             log.warn("Failed to move processed file {}", file, ex);
         }
     }
+
+    public WatcherStatus status() {
+        return new WatcherStatus(
+            props.isEnabled(),
+            props.getRoot(),
+            props.getProcessedRoot(),
+            props.isRecursive(),
+            props.getPollInterval() != null ? props.getPollInterval().toString() : null,
+            lastScanStart,
+            lastScanEnd,
+            lastScanned,
+            lastIngested,
+            lastFailed
+        );
+    }
+
+    public record WatcherStatus(
+        boolean enabled,
+        String root,
+        String processedRoot,
+        boolean recursive,
+        String pollInterval,
+        long lastScanStart,
+        long lastScanEnd,
+        int scanned,
+        int ingested,
+        int failed
+    ) {}
 }
 
 

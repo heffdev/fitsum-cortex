@@ -469,6 +469,9 @@ Details: ${msg}`)
                   <RecentUploads onAskAbout={onAskAbout} />
                 </div>
               </details>
+
+              {/* Watcher status */}
+              <WatcherStatusCard />
             </section>
           </div>
         </div>
@@ -489,6 +492,63 @@ Details: ${msg}`)
       )}
       {toast && (
         <div className="fixed right-4 bottom-4 card shadow-lg">{toast}</div>
+      )}
+    </div>
+  )
+}
+
+function WatcherStatusCard() {
+  const qc = useQueryClient()
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['watcher-status'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/watcher/status`)
+      if (!res.ok) throw new Error('Watcher unavailable')
+      return res.json() as Promise<{
+        enabled: boolean
+        root: string
+        processedRoot: string
+        recursive: boolean
+        pollInterval: string
+        lastScanStart: number
+        lastScanEnd: number
+        scanned: number
+        ingested: number
+        failed: number
+      }>
+    }
+  })
+
+  const scan = async () => {
+    await fetch(`${API_BASE}/v1/watcher/scan`, { method: 'POST' })
+    await qc.invalidateQueries({ queryKey: ['watcher-status'] })
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold">Folder watcher</h3>
+        <div className="flex items-center gap-2">
+          <button className="text-sm text-blue-600" onClick={() => refetch()} disabled={isLoading}>Refresh</button>
+          <button className="text-sm text-blue-600" onClick={scan} disabled={isLoading}>Scan now</button>
+        </div>
+      </div>
+      {isLoading && <div className="text-sm text-gray-600">Loading…</div>}
+      {data && (
+        <div className="text-sm text-gray-700 space-y-1">
+          <div><span className="text-gray-500">Enabled:</span> {String(data.enabled)}</div>
+          <div><span className="text-gray-500">Root:</span> {data.root || '—'}</div>
+          <div><span className="text-gray-500">Processed:</span> {data.processedRoot || '—'}</div>
+          <div><span className="text-gray-500">Interval:</span> {data.pollInterval || '—'}</div>
+          <div className="mt-2">
+            <span className="text-gray-500">Last scan:</span> {data.lastScanEnd ? new Date(data.lastScanEnd).toLocaleString() : '—'}
+          </div>
+          <div className="flex gap-4">
+            <div>Scanned: {data.scanned}</div>
+            <div>Ingested: {data.ingested}</div>
+            <div>Failed: {data.failed}</div>
+          </div>
+        </div>
       )}
     </div>
   )
