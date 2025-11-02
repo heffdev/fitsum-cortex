@@ -1,16 +1,15 @@
 package ai.fitsum.cortex.api.service;
 
-import ai.fitsum.cortex.api.advisor.*;
 import ai.fitsum.cortex.api.domain.Document;
 import ai.fitsum.cortex.api.dto.AskRequest;
 import ai.fitsum.cortex.api.dto.AskResponse;
 import ai.fitsum.cortex.api.repository.DocumentRepository;
+import ai.fitsum.cortex.api.retrieval.HybridRetriever;
 import ai.fitsum.cortex.api.retrieval.RetrievedChunk;
+import ai.fitsum.cortex.api.config.CortexProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -18,9 +17,7 @@ import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -35,36 +32,24 @@ public class RagService {
     
     private final ChatClient chatClient;
     private final DocumentRepository documentRepository;
+    private final HybridRetriever retriever;
+    private final CortexProperties properties;
     private final String systemPrompt;
     
     public RagService(
         ChatClient.Builder chatClientBuilder,
-        InputSanitizerAdvisor inputSanitizer,
-        SensitivityGuardAdvisor sensitivityGuard,
-        RetrievalAdvisor retrievalAdvisor,
-        ModelRoutingAdvisor modelRouting,
-        @org.springframework.lang.Nullable TelemetryAdvisor telemetry,
         DocumentRepository documentRepository,
+        HybridRetriever retriever,
+        CortexProperties properties,
         ResourceLoader resourceLoader
     ) {
         this.documentRepository = documentRepository;
+        this.retriever = retriever;
+        this.properties = properties;
         this.systemPrompt = loadSystemPrompt(resourceLoader);
-        
-        // Build chat client with full advisor chain
-        ChatClient.Builder builder = chatClientBuilder
-            .defaultAdvisors(
-                new SimpleLoggerAdvisor(),
-                inputSanitizer,
-                sensitivityGuard,
-                retrievalAdvisor,
-                modelRouting
-            )
-            .defaultSystem(systemPrompt);
-
-        if (telemetry != null) {
-            builder = builder.defaultAdvisors(telemetry);
-        }
-        this.chatClient = builder.build();
+        this.chatClient = chatClientBuilder
+            .defaultSystem(systemPrompt)
+            .build();
     }
     
     public AskResponse ask(AskRequest request, String userId) {
@@ -73,29 +58,32 @@ public class RagService {
         long startTime = System.currentTimeMillis();
         String traceId = UUID.randomUUID().toString();
         
-        // Build advisor context
-        Map<String, Object> adviseContext = new HashMap<>();
-        adviseContext.put("userId", userId);
-        adviseContext.put("sessionId", request.sessionId() != null ? request.sessionId() : "default");
-        adviseContext.put("allowFallback", request.allowFallback());
-        adviseContext.put("traceId", traceId);
-        
-        // Execute chat with advisor chain
-        // Note: adviseContext passing may differ in Spring AI 1.0.0-M3
-        // For now, advisors will use their default context handling
-        ChatResponse response = chatClient.prompt()
+        // Retrieve context and compose system message
+        int topK = properties.getRetrieval().getRerankTopK();
+        List<Long> docFilter = parseDocumentFilter(request.sourceFilter());
+        List<RetrievedChunk> chunks = (docFilter != null && !docFilter.isEmpty())
+            ? retriever.retrieve(request.question(), topK, docFilter)
+            : retriever.retrieve(request.question(), topK);
+        boolean hasContext = !chunks.isEmpty();
+        if (!hasContext && !request.allowFallback() && !properties.getRetrieval().isAllowEmptyContext()) {
+            throw new IllegalStateException("No relevant context found in knowledge base. Enable fallback mode to use general knowledge.");
+        }
+        String contextStr = buildContext(chunks);
+        String enhancedSystem = systemPrompt + "\n\n# CONTEXT\n" + (hasContext ? contextStr : "No relevant context found in knowledge base.");
+
+        String sessionId = request.sessionId() != null ? request.sessionId() : "default";
+        String answer = chatClient.prompt()
+            .advisors(a -> a
+                .param("conversationId", sessionId)
+                .param("sessionId", sessionId)
+                .param("traceId", traceId)
+            )
+            .system(enhancedSystem)
             .user(request.question())
             .call()
-            .chatResponse();
-        
-        // Extract retrieved chunks from context for citations
-        @SuppressWarnings("unchecked")
-        List<RetrievedChunk> chunks = (List<RetrievedChunk>) 
-            adviseContext.get("retrievedChunks");
+            .content();
         
         List<AskResponse.Citation> citations = buildCitations(chunks);
-        
-        String answer = response.getResult().getOutput().getContent();
         // Simple heuristic: combine top reranked score and source agreement
         double confidenceScore = 0.5;
         String confidenceLabel = "MEDIUM";
@@ -114,8 +102,8 @@ public class RagService {
             confidenceScore = Math.max(0.1, Math.min(0.99, blended));
             confidenceLabel = confidenceScore >= 0.80 ? "HIGH" : (confidenceScore >= 0.60 ? "MEDIUM" : "LOW");
         }
-        String sensitivity = (String) adviseContext.getOrDefault("sensitivity", "NONE");
-        String provider = (String) adviseContext.getOrDefault("provider", "OPENAI");
+        String sensitivity = "NONE";
+        String provider = "LM_STUDIO";
         
         int latency = (int) (System.currentTimeMillis() - startTime);
         
@@ -133,14 +121,37 @@ public class RagService {
     
     public Flux<String> askStream(AskRequest request, String userId) {
         log.info("Processing streaming question from user: {}", userId);
-        
-        // Note: Context passing simplified for Spring AI 1.0.0-M3 compatibility
+        int topK = properties.getRetrieval().getRerankTopK();
+        List<Long> docFilter = parseDocumentFilter(request.sourceFilter());
+        List<RetrievedChunk> chunks = (docFilter != null && !docFilter.isEmpty())
+            ? retriever.retrieve(request.question(), topK, docFilter)
+            : retriever.retrieve(request.question(), topK);
+        String contextStr = buildContext(chunks);
+        String enhancedSystem = systemPrompt + "\n\n# CONTEXT\n" + (chunks.isEmpty() ? "No relevant context found in knowledge base." : contextStr);
+
+        String sessionId = request.sessionId() != null ? request.sessionId() : "default";
         return chatClient.prompt()
+            .advisors(a -> a
+                .param("conversationId", sessionId)
+                .param("sessionId", sessionId)
+            )
+            .system(enhancedSystem)
             .user(request.question())
             .stream()
             .content();
     }
     
+    private List<Long> parseDocumentFilter(List<String> sourceFilter) {
+        if (sourceFilter == null || sourceFilter.isEmpty()) return List.of();
+        return sourceFilter.stream()
+            .filter(s -> s != null && s.startsWith("doc:"))
+            .map(s -> s.substring(4))
+            .filter(idStr -> idStr.matches("\\d+"))
+            .map(Long::valueOf)
+            .distinct()
+            .toList();
+    }
+
     private List<AskResponse.Citation> buildCitations(List<RetrievedChunk> chunks) {
         if (chunks == null) {
             return List.of();
@@ -165,6 +176,22 @@ public class RagService {
                 );
             })
             .collect(Collectors.toList());
+    }
+    
+    private String buildContext(List<RetrievedChunk> chunks) {
+        return chunks.stream()
+            .map(rc -> {
+                Document doc = documentRepository.findById(rc.chunk().documentId()).orElse(null);
+                String title = doc != null ? doc.title() : "Unknown";
+                String location = rc.chunk().heading() != null ? rc.chunk().heading() :
+                                 rc.chunk().pageNumber() != null ? "Page " + rc.chunk().pageNumber() :
+                                 "Section " + rc.chunk().chunkIndex();
+                return String.format("""
+                    [Document: %s, Location: %s]
+                    %s
+                    """, title, location, rc.chunk().content());
+            })
+            .collect(Collectors.joining("\n---\n"));
     }
     
     private String loadSystemPrompt(ResourceLoader resourceLoader) {

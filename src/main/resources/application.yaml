@@ -43,6 +43,12 @@ spring:
           timeout: 300s
           max-retries: 2
 
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
+
     vectorstore:
       pgvector:
         initialize-schema: false

@@ -49,6 +49,30 @@ public interface ChunkRepository extends CrudRepository<Chunk, Long> {
         ORDER BY c.id
         """)
     List<Chunk> fullTextSearch(@Param("query") String query, @Param("limit") int limit);
+
+    @Query("""
+        WITH q AS (
+            SELECT websearch_to_tsquery('english', :query) AS tsq, :query AS raw
+        )
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
+               c.token_count, c.heading, c.page_number, c.created_at
+        FROM (
+            SELECT c.id
+            FROM chunk c, q
+            WHERE c.document_id = ANY(:documentIds)
+              AND (to_tsvector('english', c.content) @@ q.tsq OR c.content % q.raw)
+            ORDER BY (
+                ts_rank(to_tsvector('english', c.content), q.tsq) * 0.7
+              + similarity(c.content, q.raw) * 0.3
+            ) DESC
+            LIMIT :limit
+        ) ids
+        JOIN chunk c ON c.id = ids.id
+        ORDER BY c.id
+        """)
+    List<Chunk> fullTextSearchByDocuments(@Param("query") String query,
+                                          @Param("documentIds") Long[] documentIds,
+                                          @Param("limit") int limit);
     
     @Query("""
         SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
@@ -58,6 +82,18 @@ public interface ChunkRepository extends CrudRepository<Chunk, Long> {
         LIMIT :limit
         """)
     List<Chunk> vectorSearch(@Param("embedding") String embedding, @Param("limit") int limit);
+
+    @Query("""
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.content_hash,
+               c.token_count, c.heading, c.page_number, c.created_at
+        FROM chunk c
+        WHERE c.document_id = ANY(:documentIds)
+        ORDER BY c.embedding <=> CAST(:embedding AS vector)
+        LIMIT :limit
+        """)
+    List<Chunk> vectorSearchByDocuments(@Param("embedding") String embedding,
+                                        @Param("documentIds") Long[] documentIds,
+                                        @Param("limit") int limit);
 
     @Query("SELECT COUNT(*) FROM chunk WHERE document_id = :documentId")
     long countByDocumentId(@Param("documentId") Long documentId);

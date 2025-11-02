@@ -278,7 +278,7 @@ function DocumentDetailModal({ documentId, onClose }: { documentId: number | nul
   )
 }
 
-function RecentUploads({ onAskAbout }: { onAskAbout: (title: string) => void }) {
+function RecentUploads({ onAskAbout }: { onAskAbout: (doc: { id: number, title: string }) => void }) {
   const [viewingDocument, setViewingDocument] = useState<number | null>(null)
   const { data, refetch, isLoading } = useQuery({
     queryKey: ['recent'],
@@ -330,7 +330,7 @@ function RecentUploads({ onAskAbout }: { onAskAbout: (title: string) => void }) 
                       </button>
                       <button className="inline-flex items-center gap-1 text-green-600 hover:text-green-700"
                         title="Ask about this file"
-                        onClick={() => onAskAbout(d.title)}>
+                        onClick={() => onAskAbout({ id: d.id, title: d.title })}>
                         <Brain size={16} /> Ask
                       </button>
                       <button className="text-red-600 hover:text-red-700"
@@ -380,7 +380,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: question.trim(),
-          sourceFilter: null,
+          sourceFilter: sourceFilterRef.current,
           allowFallback,
           sessionId: sessionRef.current
         })
@@ -414,10 +414,14 @@ Details: ${msg}`)
     await qc.invalidateQueries({ queryKey: ['recent'] })
   }
 
-  const onAskAbout = (title: string) => {
-    const prompt = `Summarize the key points of "${title}" and cite the most relevant sections.`
+  const sourceFilterRef = useRef<string[] | null>(null)
+  const onAskAbout = (doc: { id: number, title: string }) => {
+    const prompt = `Summarize the key points of "${doc.title}" and cite the most relevant sections.`
     setQuestion(prompt)
+    sourceFilterRef.current = [`doc:${doc.id}`]
     ask.mutate()
+    // clear after one turn to avoid sticky filter
+    setTimeout(() => { sourceFilterRef.current = null }, 0)
   }
 
   // Shared uploader used by global drop overlay and floating target.

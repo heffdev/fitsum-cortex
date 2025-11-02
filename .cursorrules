@@ -9,7 +9,7 @@ project:
 
 tech:
   backend: "Spring Boot 3.5+, Spring AI 1.0.3 (stable), WebFlux, Postgres + pgvector"
-  frontend: "Vaadin 24.9.x, token streaming"
+  frontend: "React 18 + Vite 5 + TypeScript + TailwindCSS; React Query; Lucide; Dropzone; dev at http://localhost:5173"
   observability: "io.arconia:arconia-opentelemetry-spring-boot-starter:0.17.1"
   optional_mcp: "If MCP bleeding-edge needed, use profile `mcpNext` with Spring AI 1.1.0-M3 in /api only."
 
@@ -24,7 +24,7 @@ policies:
 directory_ownership:
   "/api": ["backend"]
   "/ingest": ["backend"]
-  "/ui": ["frontend"]
+  "/web": ["frontend"]
   "/infra": ["devops"]
   "/docs": ["pm","backend","frontend"]
   "/scripts": ["devops"]

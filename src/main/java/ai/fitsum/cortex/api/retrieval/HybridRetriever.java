@@ -89,6 +89,37 @@ public class HybridRetriever {
         return finalResults;
     }
     
+    public List<RetrievedChunk> retrieve(String query, int topK, List<Long> documentIds) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return retrieve(query, topK);
+        }
+        log.debug("Hybrid retrieval (filtered) for query: {} on documents {}", query, documentIds);
+        Long[] idsArray = documentIds.toArray(Long[]::new);
+        // FTS filtered
+        List<Chunk> ftsResults = chunkRepository.fullTextSearchByDocuments(
+            query,
+            idsArray,
+            properties.getRetrieval().getFtsTopK()
+        );
+        // ANN filtered
+        float[] queryEmbedding = embeddingModel.embed(query);
+        String embeddingStr = formatEmbeddingForPostgres(queryEmbedding);
+        List<Chunk> annResults = chunkRepository.vectorSearchByDocuments(
+            embeddingStr,
+            idsArray,
+            properties.getRetrieval().getAnnTopK()
+        );
+        // Union
+        Set<Long> seenIds = new HashSet<>();
+        List<Chunk> candidateChunks = new ArrayList<>();
+        for (Chunk c : ftsResults) if (seenIds.add(c.id())) candidateChunks.add(c);
+        for (Chunk c : annResults) if (seenIds.add(c.id())) candidateChunks.add(c);
+        // Rerank and cap
+        List<RetrievedChunk> reranked = reRanker.rerank(query, candidateChunks);
+        int limit = Math.min(topK, properties.getRetrieval().getMaxChunks());
+        return reranked.stream().limit(limit).collect(Collectors.toList());
+    }
+    
     private String formatEmbeddingForPostgres(float[] embedding) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < embedding.length; i++) {
